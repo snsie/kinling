@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { doCare } from '../../app/actions';
 import { FOODS, KEEPSAKES, MATERIALS } from '../../game/catalog';
 import { nextStageAt, lifeStageFor, STAGE_LABELS } from '../../game/stage';
-import { personalityWords } from '../../game/state';
+import { activeKinling, personalityWords } from '../../game/state';
 import type { FoodId, KeepsakeId, MaterialId, SaveData } from '../../game/types';
 import { FOOD_IDS, KEEPSAKE_IDS, MATERIAL_IDS } from '../../game/types';
 import { ItemIcon } from '../../render/ItemIcon';
@@ -11,7 +11,7 @@ import { Bar, formatTime } from '../common';
 import { Kinetic } from '../motion';
 
 export function BagPanel({ save }: { save: SaveData }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const [selected, setSelected] = useState<KeepsakeId | null>(null);
   const found = new Map(save.inventory.keepsakes.map((k) => [k.id, k]));
   const stage = lifeStageFor(c.bond);

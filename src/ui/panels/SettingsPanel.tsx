@@ -10,6 +10,7 @@ import { requestPersistentStorage, storageEstimate } from '../../persistence/db'
 import { AiSetup } from '../AiSetup';
 import { ConfirmDialog, formatTime } from '../common';
 import { Kinetic } from '../motion';
+import { activeKinling } from '../../game/state';
 
 export function SettingsPanel({ save }: { save: SaveData }) {
   const { status, role } = useStore();
@@ -35,7 +36,7 @@ export function SettingsPanel({ save }: { save: SaveData }) {
         ui.toast(`Import failed: ${res.error}`, 'error');
         return;
       }
-      const c = res.save.creature;
+      const c = activeKinling(res.save);
       setPendingImport({
         save: res.save,
         note: `${c ? `${c.name} the ${c.egg} kinling` : 'A save in onboarding'}, last saved ${formatTime(res.save.updatedAt)}${res.migratedFrom ? ` (upgraded from format v${res.migratedFrom})` : ''}.`,
@@ -47,7 +48,7 @@ export function SettingsPanel({ save }: { save: SaveData }) {
     }
   };
 
-  const name = save.creature?.name ?? '';
+  const name = activeKinling(save)?.name ?? '';
   const readOnly = role !== 'writer';
 
   return (

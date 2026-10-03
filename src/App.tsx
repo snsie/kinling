@@ -10,6 +10,7 @@ import { GameScreen } from './ui/GameScreen';
 import { Onboarding } from './ui/onboarding/Onboarding';
 import { TopBar } from './ui/TopBar';
 import { parseImport } from './persistence/exportImport';
+import { activeKinling } from './game/state';
 
 export function App() {
   const { save, status, notice } = useStore();
@@ -58,7 +59,7 @@ export function App() {
         </main>
       )}
       {save && save.onboarding.step !== 'done' && <Onboarding save={save} reducedMotion={reducedMotion} />}
-      {save && save.onboarding.step === 'done' && save.creature && <GameScreen save={save} reducedMotion={reducedMotion} />}
+      {save && save.onboarding.step === 'done' && activeKinling(save) && <GameScreen save={save} reducedMotion={reducedMotion} />}
       <Toasts />
     </div>
   );

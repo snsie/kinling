@@ -6,12 +6,13 @@ import { validateSave } from '../src/persistence/schema';
 import { SaveConflictError, SaveStorage } from '../src/persistence/db';
 import { createSave } from '../src/game/state';
 import { resolveAdventure } from '../src/game/adventure';
-import { hatchedSave, T0 } from './helpers';
+import { hatchedSave, kin, legacyV3, T0 } from './helpers';
 
 describe('save validation', () => {
   it('accepts fresh and played saves', () => {
     expect(validateSave(createSave(T0)).ok).toBe(true);
-    const played = resolveAdventure(hatchedSave(), {
+    const fresh = hatchedSave();
+    const played = resolveAdventure(fresh, kin(fresh).id, {
       runId: 'r', route: 'garden-path', seed: 1, collected: { leaf: 2 }, golden: true, hits: 0, completed: true, tutorial: false, durationMs: 1,
     }, T0).save;
     expect(validateSave(played).ok).toBe(true);
@@ -20,7 +21,7 @@ describe('save validation', () => {
   it('rejects out-of-range and unknown values', () => {
     const s = hatchedSave();
     const bad1 = structuredClone(s);
-    bad1.creature!.needs.hunger = 500;
+    kin(bad1).needs.hunger = 500;
     expect(validateSave(bad1).ok).toBe(false);
     const bad2 = structuredClone(s) as unknown as { unlocks: { traits: string[] } };
     bad2.unlocks.traits.push('feature.jetpack');
@@ -32,7 +33,7 @@ describe('save validation', () => {
 
   it('rejects a creature wearing locked features', () => {
     const s = hatchedSave('woodland');
-    s.creature!.appearance.wings = true;
+    kin(s).appearance.wings = true;
     const r = validateSave(s);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/never unlocked/);
@@ -63,21 +64,21 @@ describe('export and import', () => {
   });
 
   it('migrates a version 1 save', () => {
-    const v2 = hatchedSave();
-    const v1: Record<string, unknown> = structuredClone(v2) as never;
+    const v3 = legacyV3(hatchedSave());
+    const v1: Record<string, unknown> = structuredClone(v3);
     v1.schemaVersion = 1;
     v1.playerName = 'Sam';
     delete v1.player;
     delete v1.diaryCursor;
     delete v1.claimedRuns;
-    v1.memories = (v2.memories as unknown as Record<string, unknown>[]).map(({ pinned: _p, ...m }) => m);
-    v1.settings = { ...v2.settings, ai: { enabled: false, modelId: 'Qwen3-1.7B-q4f16_1-MLC' } };
+    v1.memories = (v3.memories as Record<string, unknown>[]).map(({ pinned: _p, ...m }) => m);
+    v1.settings = { ...(v3.settings as object), ai: { enabled: false, modelId: 'Qwen3-1.7B-q4f16_1-MLC' } };
     const r = parseImport(JSON.stringify(v1));
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.migratedFrom).toBe(1);
       expect(r.save.player).toEqual({ name: 'Sam', facts: [] });
-      expect(r.save.memories.every((m) => m.pinned === false)).toBe(true);
+      expect(kin(r.save).memories.every((m) => m.pinned === false)).toBe(true);
       expect(r.save.claimedRuns).toEqual([]);
     }
   });
@@ -92,7 +93,7 @@ describe('IndexedDB storage', () => {
     const rev1 = await store.write(s, null);
     expect(rev1).toBe(1);
     const loaded = await store.load();
-    expect(loaded?.save.creature?.name).toBe('Mochi');
+    expect(loaded && kin(loaded.save).name).toBe('Mochi');
     // A second tab that still thinks there is no save must not overwrite.
     await expect(store.write(s, null)).rejects.toBeInstanceOf(SaveConflictError);
     const rev2 = await store.write({ ...s, revision: rev1 }, rev1);
@@ -111,7 +112,7 @@ describe('IndexedDB storage', () => {
     await db.saves.put({ key: 'main', revision: 3, updatedAt: 0, data: { schemaVersion: 2, junk: true } });
     const loaded = await store.load();
     expect(loaded?.fromBackup).toBe(true);
-    expect(loaded?.save.creature?.name).toBe('Mochi');
+    expect(loaded && kin(loaded.save).name).toBe('Mochi');
     await store.destroy();
   });
 });

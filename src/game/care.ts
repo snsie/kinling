@@ -6,15 +6,15 @@ import { advanceNeeds, clampNeeds } from './needs';
 import type { Outcome } from './outcome';
 import { rejected } from './outcome';
 import { addBond, refreshProgress } from './progress';
-import { addAffinity, draft, ensureDaily, hasFood, nudgePersonality, recentCareCount, recordEvent, recordMemory } from './state';
-import type { CareAction, FoodId, SaveData } from './types';
+import { addAffinity, draft, ensureDaily, hasFood, kinlingById, nudgePersonality, recentCareCount, recordEvent, recordMemory } from './state';
+import type { CareAction, FoodId, Kinling, SaveData } from './types';
 import { formatDuration } from './util';
 
 /** Repeating the same action within 20 minutes gives smaller (but still real) effects. */
 export const DIMINISH = [1, 0.75, 0.5, 0.35] as const;
 
-export function careMultiplier(save: SaveData, action: CareAction, now: number): number {
-  return DIMINISH[Math.min(recentCareCount(save, action, now), DIMINISH.length - 1)]!;
+export function careMultiplier(k: Kinling, action: CareAction, now: number): number {
+  return DIMINISH[Math.min(recentCareCount(k, action, now), DIMINISH.length - 1)]!;
 }
 
 export interface CareOptions {
@@ -22,13 +22,13 @@ export interface CareOptions {
   rand?: () => number;
 }
 
-export function performCare(save: SaveData, action: CareAction, now: number, opts: CareOptions = {}): Outcome {
-  if (!save.creature) return rejected(save, 'There is no creature yet.');
+export function performCare(save: SaveData, kinlingId: string, action: CareAction, now: number, opts: CareOptions = {}): Outcome {
+  if (!kinlingById(save, kinlingId)) return rejected(save, 'There is no kinling here.');
   const s = draft(save);
-  ensureDaily(s, now);
-  const c = s.creature!;
+  const c = kinlingById(s, kinlingId)!;
+  ensureDaily(c, now);
   const rand = opts.rand ?? Math.random;
-  const m = careMultiplier(s, action, now);
+  const m = careMultiplier(c, action, now);
   const diminished = m < 0.6;
   const bondBefore = c.bond;
   const n = c.needs;
@@ -50,26 +50,26 @@ export function performCare(save: SaveData, action: CareAction, now: number, opt
       n.hunger += hungerGain;
       n.happiness += joy;
       n.energy += 2 * m;
-      if (def.affinity) addAffinity(s, def.affinity, 1);
+      if (def.affinity) addAffinity(c, def.affinity, 1);
       s.stats.feeds += 1;
-      if (m >= 0.75) addBond(s, 1);
+      if (m >= 0.75) addBond(c, 1);
       let line = feedLine(favorite ? 'favorite' : disliked ? 'disliked' : 'normal', food, rand);
       if (favorite && !c.preferences.knownFavoriteFood) {
         c.preferences.knownFavoriteFood = true;
-        recordMemory(s, { kind: 'preference', text: `I found out my favorite food is ${def.name}.`, tags: ['food', 'favorite', food, def.name], importance: 3 }, now);
+        recordMemory(c, { kind: 'preference', text: `I found out my favorite food is ${def.name}.`, tags: ['food', 'favorite', food, def.name], importance: 3 }, now);
         line = `${def.name}! I think... this is my favorite food ever!`;
       }
       if (disliked && !c.preferences.knownDislikedFood) {
         c.preferences.knownDislikedFood = true;
-        recordMemory(s, { kind: 'preference', text: `I learned I don't really like ${def.name}.`, tags: ['food', 'dislike', food, def.name], importance: 2 }, now);
+        recordMemory(c, { kind: 'preference', text: `I learned I don't really like ${def.name}.`, tags: ['food', 'dislike', food, def.name], importance: 2 }, now);
       }
       if (s.stats.feeds === 1) {
-        recordMemory(s, { kind: 'care', text: `My very first meal was ${def.name}.`, tags: ['food', 'first', food, def.name], importance: 2 }, now);
+        recordMemory(c, { kind: 'care', text: `My very first meal was ${def.name}.`, tags: ['food', 'first', food, def.name], importance: 2 }, now);
       }
       const desc = `${c.name} ate ${def.name}${favorite ? ' (favorite food)' : disliked ? ' (not a favorite)' : ''}.`;
       recordEvent(s, 'care', desc, now);
-      finishCare(s, action, now);
-      const progress = refreshProgress(s, now, bondBefore);
+      finishCare(c, action, now);
+      const progress = refreshProgress(s, c, now, bondBefore);
       return {
         save: s,
         feedback: { ok: true, line, animation: 'eating', sound: 'munch', aiEvent: desc, ...progress },
@@ -79,22 +79,22 @@ export function performCare(save: SaveData, action: CareAction, now: number, opt
       n.cleanliness += 35 * m;
       n.happiness += 5 * m;
       s.stats.grooms += 1;
-      if (m >= 0.75) addBond(s, 1);
+      if (m >= 0.75) addBond(c, 1);
       const desc = `${c.name} got brushed and cleaned up.`;
       recordEvent(s, 'care', desc, now);
-      finishCare(s, action, now);
-      const progress = refreshProgress(s, now, bondBefore);
+      finishCare(c, action, now);
+      const progress = refreshProgress(s, c, now, bondBefore);
       return { save: s, feedback: { ok: true, line: careLine('groom', diminished, rand), animation: 'grooming', sound: 'brush', aiEvent: desc, ...progress } };
     }
     case 'rest': {
       n.energy += 35 * m;
       n.hunger -= 3;
       s.stats.rests += 1;
-      if (m >= 0.75) addBond(s, 0.5);
+      if (m >= 0.75) addBond(c, 0.5);
       const desc = `${c.name} took a cozy nap.`;
       recordEvent(s, 'care', desc, now);
-      finishCare(s, action, now);
-      const progress = refreshProgress(s, now, bondBefore);
+      finishCare(c, action, now);
+      const progress = refreshProgress(s, c, now, bondBefore);
       return { save: s, feedback: { ok: true, line: careLine('rest', diminished, rand), animation: 'sleeping', sound: 'snooze', aiEvent: desc, ...progress } };
     }
     case 'play': {
@@ -107,25 +107,24 @@ export function performCare(save: SaveData, action: CareAction, now: number, opt
       n.cleanliness -= 4;
       s.stats.plays += 1;
       if (m >= 0.75) {
-        addBond(s, 1);
-        nudgePersonality(s, { playfulness: 1 }, now);
+        addBond(c, 1);
+        nudgePersonality(c, { playfulness: 1 }, now);
       }
       const desc = `${c.name} played a bouncy game of chase.`;
       recordEvent(s, 'care', desc, now);
-      finishCare(s, action, now);
-      const progress = refreshProgress(s, now, bondBefore);
+      finishCare(c, action, now);
+      const progress = refreshProgress(s, c, now, bondBefore);
       return { save: s, feedback: { ok: true, line: careLine('play', diminished, rand), animation: 'playing', sound: 'boing', aiEvent: desc, ...progress } };
     }
   }
 }
 
-function finishCare(s: SaveData, action: CareAction, now: number): void {
-  const c = s.creature!;
+function finishCare(c: Kinling, action: CareAction, now: number): void {
   c.needs = clampNeeds(c.needs);
-  const log = s.daily.careLog[action];
+  const log = c.careLog[action];
   log.push(now);
   // Keep only the recent window needed for diminishing returns.
-  s.daily.careLog[action] = log.filter((t) => now - t < 60 * 60 * 1000).slice(-10);
+  c.careLog[action] = log.filter((t) => now - t < 60 * 60 * 1000).slice(-10);
 }
 
 export interface TickResult extends Outcome {
@@ -137,7 +136,7 @@ export interface TickResult extends Outcome {
  * greeted warmly. Clock changes backwards are ignored.
  */
 export function tick(save: SaveData, now: number, rand: () => number = Math.random): TickResult {
-  if (!save.creature) return { save, feedback: { ok: true }, absentMs: 0 };
+  if (!save.kinlings.length) return { save, feedback: { ok: true }, absentMs: 0 };
   const elapsed = now - save.lastTickAt;
   if (elapsed <= 0) {
     if (elapsed < 0) {
@@ -148,12 +147,18 @@ export function tick(save: SaveData, now: number, rand: () => number = Math.rand
     return { save, feedback: { ok: true }, absentMs: 0 };
   }
   const s = draft(save);
-  ensureDaily(s, now);
-  const { needs, absent } = advanceNeeds(s.creature!.needs, elapsed);
-  s.creature!.needs = needs;
+  let absent = false;
+  for (const k of s.kinlings) {
+    ensureDaily(k, now);
+    const next = advanceNeeds(k.needs, elapsed);
+    k.needs = next.needs;
+    absent = next.absent;
+  }
   s.lastTickAt = now;
   if (absent) {
-    recordEvent(s, 'returned', `${s.player.name ?? 'The player'} came back after ${formatDuration(elapsed)}; ${s.creature!.name} had napped in the meantime.`, now);
+    const names = s.kinlings.map((k) => k.name);
+    const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)} had napped` : `${names[0]} had napped`;
+    recordEvent(s, 'returned', `${s.player.name ?? 'The player'} came back after ${formatDuration(elapsed)}; ${who} in the meantime.`, now);
     return { save: s, feedback: { ok: true, line: returnLine(s, rand), animation: 'happy', sound: 'chime' }, absentMs: elapsed };
   }
   return { save: s, feedback: { ok: true }, absentMs: 0 };

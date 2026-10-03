@@ -282,14 +282,13 @@ export function withTrait(a: Appearance, id: TraitId, remove = false): Appearanc
   return next;
 }
 
+/** Unlocks are shared, so a requirement counts as met when any kinling meets it. */
 export function requirementMet(save: SaveData, req: UnlockRequirement): boolean {
-  const c = save.creature;
-  if (!c) return false;
   switch (req.kind) {
     case 'affinity':
-      return c.affinities[req.affinity] >= req.min;
+      return save.kinlings.some((k) => k.affinities[req.affinity] >= req.min);
     case 'stage':
-      return LIFE_STAGES.indexOf(lifeStageFor(c.bond)) >= LIFE_STAGES.indexOf(req.min);
+      return save.kinlings.some((k) => LIFE_STAGES.indexOf(lifeStageFor(k.bond)) >= LIFE_STAGES.indexOf(req.min));
     case 'keepsake':
       return save.inventory.keepsakes.some((k) => k.id === req.keepsake);
     case 'stat':
@@ -298,10 +297,9 @@ export function requirementMet(save: SaveData, req: UnlockRequirement): boolean 
 }
 
 export function describeRequirement(save: SaveData | null, req: UnlockRequirement): string {
-  const c = save?.creature;
   switch (req.kind) {
     case 'affinity': {
-      const now = c ? Math.floor(c.affinities[req.affinity]) : 0;
+      const now = Math.floor(Math.max(0, ...(save?.kinlings ?? []).map((k) => k.affinities[req.affinity])));
       return `${req.affinity === 'woodland' ? 'Woodland' : 'Aquatic'} affinity ${req.min} (now ${now})`;
     }
     case 'stage':

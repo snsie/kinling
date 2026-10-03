@@ -10,9 +10,10 @@ import { ArenaBackdrop } from '../../render/ArenaArt';
 import { ItemIcon } from '../../render/ItemIcon';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
+import { activeKinling } from '../../game/state';
 
 export function ExplorePanel({ save, onStart }: { save: SaveData; onStart: (route: RouteId) => void }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const paddle = getTrait('tail.paddle');
   return (
     <div className="panel explore">

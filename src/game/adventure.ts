@@ -6,9 +6,9 @@ import { clampNeeds } from './needs';
 import type { Outcome, RewardSummary } from './outcome';
 import { rejected } from './outcome';
 import { addBond, refreshProgress } from './progress';
-import { addAffinity, addFoods, addMaterials, draft, ensureDaily, LIMITS, nudgePersonality, recordEvent, recordMemory } from './state';
+import { activeKinling, addAffinity, addFoods, addMaterials, draft, ensureDaily, kinlingById, LIMITS, nudgePersonality, recordEvent, recordMemory } from './state';
 import { isWearing } from './traits';
-import type { FoodId, KeepsakeId, MaterialCost, MaterialId, RouteId, SaveData } from './types';
+import type { FoodId, KeepsakeId, Kinling, MaterialCost, MaterialId, RouteId, SaveData } from './types';
 import { FOOD_IDS, MATERIAL_IDS, ROUTE_IDS } from './types';
 import { createRng, pick } from './util';
 import type { CollectibleKind } from '../minigame/arenas';
@@ -63,9 +63,8 @@ export interface RouteAvailability {
   reason?: string;
 }
 
-export function routeAvailability(save: SaveData, route: RouteId): RouteAvailability {
-  const c = save.creature;
-  if (!c) return { route, available: false, reason: 'Hatch your creature first.' };
+export function routeAvailability(save: SaveData, route: RouteId, c: Kinling | null = activeKinling(save)): RouteAvailability {
+  if (!c) return { route, available: false, reason: 'Hatch your kinling first.' };
   const def = ROUTES[route];
   if (def.requiresTrait && !isWearing(c.appearance, def.requiresTrait)) {
     return { route, available: false, reason: `Needs a paddle tail to swim here.` };
@@ -121,20 +120,20 @@ export interface AdventureOutcome extends Outcome {
   rewards?: RewardSummary;
 }
 
-export function resolveAdventure(save: SaveData, rawResult: MinigameResult, now: number): AdventureOutcome {
+export function resolveAdventure(save: SaveData, kinlingId: string, rawResult: MinigameResult, now: number): AdventureOutcome {
   const result = sanitizeResult(rawResult);
   if (!result) return rejected(save, 'That adventure result could not be read, so no rewards were given.');
-  if (!save.creature) return rejected(save, 'There is no creature yet.');
+  const c0 = kinlingById(save, kinlingId);
+  if (!c0) return rejected(save, 'There is no kinling here.');
   if (save.claimedRuns.includes(result.runId)) return rejected(save, 'Rewards for this adventure were already collected.');
   const route = ROUTES[result.route];
-  const c0 = save.creature;
   if (route.requiresTrait && !isWearing(c0.appearance, route.requiresTrait)) {
     return rejected(save, `${route.name} needs a paddle tail, so no rewards were given.`);
   }
 
   const s = draft(save);
-  ensureDaily(s, now);
-  const c = s.creature!;
+  const c = kinlingById(s, kinlingId)!;
+  ensureDaily(c, now);
   const bondBefore = c.bond;
   const firstVisit = isFirstVisit(s, result.route);
   const rand = createRng(result.seed ^ 0x9e3779b9);
@@ -190,11 +189,11 @@ export function resolveAdventure(save: SaveData, rawResult: MinigameResult, now:
 
   // Affinity grows with how much was explored.
   const affinityGain = result.tutorial ? 2 : Math.min(10, 4 + Math.floor(score / 3)) + (result.route === 'pond-deep' ? 1 : 0);
-  const affinity = addAffinity(s, route.affinity, affinityGain);
+  const affinity = addAffinity(c, route.affinity, affinityGain);
 
   // Personality: small, deterministic, daily-capped nudges.
   nudgePersonality(
-    s,
+    c,
     {
       curiosity: firstVisit ? 2 : 1,
       confidence: tier === 'gold' ? 2 : tier === 'silver' ? 1 : result.hits >= 5 ? -1 : 0,
@@ -203,7 +202,7 @@ export function resolveAdventure(save: SaveData, rawResult: MinigameResult, now:
     now,
   );
 
-  addBond(s, result.tutorial ? 4 : 6 + (tier === 'gold' ? 3 : tier === 'silver' ? 2 : tier === 'bronze' ? 1 : 0));
+  addBond(c, result.tutorial ? 4 : 6 + (tier === 'gold' ? 3 : tier === 'silver' ? 2 : tier === 'bronze' ? 1 : 0));
   s.stats.adventures += 1;
   if (route.location === 'garden') s.stats.gardenTrips += 1;
   else s.stats.pondTrips += 1;
@@ -217,21 +216,21 @@ export function resolveAdventure(save: SaveData, rawResult: MinigameResult, now:
   const desc = `${c.name} explored the ${route.name}${found ? ` and gathered ${found}` : ''}${keepsakes.length ? `, finding ${keepsakes.map((k) => `a ${KEEPSAKES[k].name}`).join(' and ')}` : ''}.`;
   recordEvent(s, 'adventure', desc, now);
   if (firstVisit) {
-    recordMemory(s, { kind: 'adventure', text: `My first trip to the ${route.name} at ${LOCATION_NAMES[route.location]}.`, tags: [route.location, result.route, 'first', 'explore'], importance: 3 }, now);
+    recordMemory(c, { kind: 'adventure', text: `My first trip to the ${route.name} at ${LOCATION_NAMES[route.location]}.`, tags: [route.location, result.route, 'first', 'explore'], importance: 3 }, now);
   }
   if (tier === 'gold') {
-    recordMemory(s, { kind: 'adventure', text: `We had an amazing haul at the ${route.name} (score ${score}).`, tags: [route.location, 'gold', 'explore'], importance: 2 }, now);
+    recordMemory(c, { kind: 'adventure', text: `We had an amazing haul at the ${route.name} (score ${score}).`, tags: [route.location, 'gold', 'explore'], importance: 2 }, now);
   }
   for (const k of keepsakes) {
     recordEvent(s, 'keepsake', `${c.name} found the ${KEEPSAKES[k].name} keepsake.`, now);
-    recordMemory(s, { kind: 'keepsake', text: `I found a ${KEEPSAKES[k].name}: ${KEEPSAKES[k].description}`, tags: ['keepsake', k, route.location, ...KEEPSAKES[k].name.toLowerCase().split(' ')], importance: 3 }, now);
+    recordMemory(c, { kind: 'keepsake', text: `I found a ${KEEPSAKES[k].name}: ${KEEPSAKES[k].description}`, tags: ['keepsake', k, route.location, ...KEEPSAKES[k].name.toLowerCase().split(' ')], importance: 3 }, now);
   }
   if (favoritePlace && !c.preferences.knownFavoritePlace) {
     c.preferences.knownFavoritePlace = true;
-    recordMemory(s, { kind: 'preference', text: `I realized ${LOCATION_NAMES[route.location]} is my favorite place.`, tags: [route.location, 'favorite', 'place'], importance: 3 }, now);
+    recordMemory(c, { kind: 'preference', text: `I realized ${LOCATION_NAMES[route.location]} is my favorite place.`, tags: [route.location, 'favorite', 'place'], importance: 3 }, now);
   }
 
-  const progress = refreshProgress(s, now, bondBefore);
+  const progress = refreshProgress(s, c, now, bondBefore);
   const rewards: RewardSummary = {
     materials: gotMaterials,
     foods: gotFoods,

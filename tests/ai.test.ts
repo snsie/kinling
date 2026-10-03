@@ -4,7 +4,7 @@ import { chatMessages, cleanReply, creatureSystemPrompt, toneIsSafe } from '../s
 import { checkAction } from '../src/game/careProposals';
 import { planEvolution } from '../src/game/evolution';
 import { addChatMessage } from '../src/game/social';
-import { hatchedSave, T0 } from './helpers';
+import { hatchedSave, kin, T0 } from './helpers';
 
 describe('malformed AI proposals', () => {
   it('handles non-JSON, truncated JSON and prose around JSON', () => {
@@ -33,7 +33,7 @@ describe('malformed AI proposals', () => {
     const s = hatchedSave('woodland');
     s.inventory.materials = { leaf: 0, petal: 0, pebble: 0, shell: 0, reed: 0, dewdrop: 0, stardust: 0 };
     const p = parseEvolutionProposal('{"reply":"I grew wings!","changes":[{"trait":"feature.wings","remove":false}],"keep":[]}')!;
-    const plan = planEvolution(s, p.request);
+    const plan = planEvolution(s, kin(s).id, p.request);
     expect(plan.accepted).toHaveLength(0);
     expect(plan.rejected[0]!.code).toBe('locked');
   });
@@ -87,7 +87,7 @@ describe('reply hygiene', () => {
 describe('prompt context', () => {
   it('is compact, grounded in state and bounded in history', () => {
     let s = hatchedSave();
-    for (let i = 0; i < 20; i++) s = addChatMessage(s, i % 2 ? 'creature' : 'player', `message ${i}`, i % 2 ? 'ai' : 'player', T0 + i);
+    for (let i = 0; i < 20; i++) s = addChatMessage(s, kin(s).id, i % 2 ? 'creature' : 'player', `message ${i}`, i % 2 ? 'ai' : 'player', T0 + i);
     const msgs = chatMessages(s, 'what should we do?', T0 + 100);
     expect(msgs[0]!.role).toBe('system');
     expect(msgs.length).toBeLessThanOrEqual(8);

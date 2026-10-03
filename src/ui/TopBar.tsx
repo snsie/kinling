@@ -6,11 +6,12 @@ import { ui } from '../app/ui';
 import { lifeStageFor, STAGE_LABELS } from '../game/stage';
 import type { SaveData } from '../game/types';
 import { SaveStatusText } from './panels/SettingsPanel';
+import { activeKinling } from '../game/state';
 
 export function TopBar({ save }: { save: SaveData | null }) {
   const { status } = useStore();
   const ai = useAiStatus();
-  const c = save?.creature;
+  const c = save ? activeKinling(save) : null;
   const statusTone = status.kind === 'error' || status.kind === 'memory-only' ? 'bad' : status.kind === 'readonly' || status.kind === 'conflict' ? 'warn' : 'ok';
   const done = save?.onboarding.step === 'done';
   const ref = useRef<HTMLElement>(null);

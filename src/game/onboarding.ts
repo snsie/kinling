@@ -2,11 +2,11 @@
 import { COLORS, EGGS, STARTER_COLORS } from './catalog';
 import type { Outcome } from './outcome';
 import { rejected } from './outcome';
-import { draft, eggDefaults, recordEvent, recordMemory, LIMITS } from './state';
+import { activeKinling, draft, eggDefaults, hatchKinling, playerFeelingFromBond, recordEvent, recordMemory, LIMITS } from './state';
 import { SHAPE_PRESETS, starterTraitsFor, TRAIT_BY_ID, withTrait } from './traits';
 import type { Appearance, ColorId, EarId, EggType, OnboardingStep, PatternId, SaveData, TailId, TraitId } from './types';
 import { EAR_IDS, PATTERN_IDS, TAIL_IDS } from './types';
-import { clamp, uid } from './util';
+import { clamp } from './util';
 
 export interface CreationOptions {
   colors: ColorId[];
@@ -79,27 +79,19 @@ export function setDraftAppearance(save: SaveData, appearance: Appearance): Save
 export function hatch(save: SaveData, now: number): Outcome {
   const egg = save.onboarding.egg;
   if (!egg || !save.onboarding.draftAppearance) return rejected(save, 'Choose an egg first.');
-  if (save.creature) return rejected(save, 'Already hatched.');
+  if (save.kinlings.length) return rejected(save, 'Already hatched.');
   const s = draft(save);
   const def = EGGS[egg];
   const starters = starterTraitsFor(egg);
-  s.creature = {
-    id: uid('kin'),
-    name: '',
-    egg,
-    hatchedAt: now,
-    appearance: normalizeCreationAppearance(egg, s.onboarding.draftAppearance!),
-    personality: { ...def.personality },
-    needs: { hunger: 62, energy: 85, cleanliness: 90, happiness: 72 },
-    preferences: { ...def.preferences, knownFavoriteFood: false, knownDislikedFood: false, knownFavoritePlace: false },
-    affinities: { ...def.affinities },
-    bond: 0,
-  };
+  const k = hatchKinling(s, egg, normalizeCreationAppearance(egg, s.onboarding.draftAppearance!), now);
+  s.kinlings.push(k);
+  s.activeKinlingId = k.id;
+  s.feelings.push(playerFeelingFromBond(k.id, k.bond));
   s.unlocks = { traits: [...starters], owned: [...starters] };
   s.lastTickAt = now;
   s.onboarding.step = 'name';
   recordEvent(s, 'hatched', `A kinling hatched from a ${def.name.toLowerCase()}.`, now);
-  recordMemory(s, { kind: 'milestone', text: `I hatched from a ${def.name.toLowerCase()} and saw my friend for the first time.`, tags: ['hatch', 'egg', egg, 'birthday', 'first'], importance: 3 }, now);
+  recordMemory(k, { kind: 'milestone', text: `I hatched from a ${def.name.toLowerCase()} and saw my friend for the first time.`, tags: ['hatch', 'egg', egg, 'birthday', 'first'], importance: 3 }, now);
   return { save: s, feedback: { ok: true, animation: 'happy', sound: 'sparkle', line: '*blinks* ...Hi!' } };
 }
 
@@ -114,17 +106,17 @@ export function sanitizeName(raw: string, max: number = LIMITS.nameLength): stri
 }
 
 export function nameCreature(save: SaveData, name: string, playerName: string, now: number): Outcome {
-  const c = save.creature;
-  if (!c) return rejected(save, 'Hatch first.');
+  if (!activeKinling(save)) return rejected(save, 'Hatch first.');
   const clean = sanitizeName(name);
   if (!clean) return rejected(save, 'Please choose a name using letters or numbers.');
   const s = draft(save);
-  s.creature!.name = clean;
+  const k = activeKinling(s)!;
+  k.name = clean;
   const pn = sanitizeName(playerName, 24);
   s.player.name = pn || null;
   s.onboarding.step = 'firstCare';
   recordEvent(s, 'hatched', `The new kinling was named ${clean}${pn ? ` by ${pn}` : ''}.`, now);
-  recordMemory(s, { kind: 'milestone', text: `${pn || 'My friend'} named me ${clean}.`, tags: ['name', clean.toLowerCase(), 'first'], importance: 3 }, now);
+  recordMemory(k, { kind: 'milestone', text: `${pn || 'My friend'} named me ${clean}.`, tags: ['name', clean.toLowerCase(), 'first'], importance: 3 }, now);
   return { save: s, feedback: { ok: true, animation: 'happy', sound: 'chime', line: `${clean}! I love it. That's me!` } };
 }
 

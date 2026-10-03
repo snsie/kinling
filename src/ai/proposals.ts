@@ -6,6 +6,9 @@ import type { EvolutionRequest, KeepSlot } from '../game/evolution';
 import { KEEP_SLOTS } from '../game/evolution';
 import type { ProposedAction } from '../game/careProposals';
 import { coerceActions } from '../game/careProposals';
+import { INTENTS, type Intent } from '../game/intent';
+import { sanitizeText } from '../game/social';
+import { LIMITS } from '../game/state';
 import { isTraitId } from '../game/traits';
 import type { TraitId } from '../game/types';
 import { cleanReply } from './prompts';
@@ -108,6 +111,19 @@ export function parseCareProposal(raw: string): CareProposal | null {
   const parsed = CareProposalSchema.safeParse(extractJson(raw));
   if (!parsed.success) return null;
   return { actions: coerceActions(parsed.data.actions), reply: cleanReply(parsed.data.reply, 2) };
+}
+
+export function parseIntent(raw: string): Intent | null {
+  const parsed = z.object({ intent: z.enum(INTENTS) }).safeParse(extractJson(raw));
+  return parsed.success ? parsed.data.intent : null;
+}
+
+/** A suggested fact, cleaned. Null when the model found none. */
+export function parseFactProposal(raw: string): string | null {
+  const parsed = z.object({ fact: z.string().max(400) }).safeParse(extractJson(raw));
+  if (!parsed.success) return null;
+  const fact = sanitizeText(parsed.data.fact.replace(/^["“'\s]+|["”'\s.!]+$/g, ''), LIMITS.factLength);
+  return fact.length >= 3 ? fact : null;
 }
 
 /**

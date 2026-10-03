@@ -169,6 +169,8 @@ export interface EggDef {
   personality: Personality;
   affinities: Record<AffinityKey, number>;
   preferences: Pick<Preferences, 'favoriteFood' | 'dislikedFood' | 'favoritePlace'>;
+  /** Later siblings draw their tastes from here, so kinlings from the same egg differ. */
+  preferencePool: { favoriteFood: FoodId[]; dislikedFood: FoodId[]; favoritePlace: LocationId[] };
   /** Traits unlocked from the start for this egg in addition to the shared starters. */
   starterTraits: TraitId[];
   defaultAppearance: Appearance;
@@ -185,6 +187,7 @@ export const EGGS: Record<EggType, EggDef> = {
     personality: { curiosity: 55, confidence: 45, playfulness: 50 },
     affinities: { woodland: 15, aquatic: 0 },
     preferences: { favoriteFood: 'dewberry', dislikedFood: 'cress', favoritePlace: 'garden' },
+    preferencePool: { favoriteFood: ['dewberry', 'clover', 'cress'], dislikedFood: ['cress', 'pondPlum', 'clover'], favoritePlace: ['garden', 'garden', 'pond'] },
     starterTraits: ['ears.leaf', 'color.moss'],
     defaultAppearance: {
       bodyColor: 'moss',
@@ -208,6 +211,7 @@ export const EGGS: Record<EggType, EggDef> = {
     personality: { curiosity: 50, confidence: 40, playfulness: 60 },
     affinities: { woodland: 0, aquatic: 15 },
     preferences: { favoriteFood: 'pondPlum', dislikedFood: 'clover', favoritePlace: 'pond' },
+    preferencePool: { favoriteFood: ['pondPlum', 'cress', 'dewberry'], dislikedFood: ['clover', 'dewberry', 'cress'], favoritePlace: ['pond', 'pond', 'garden'] },
     starterTraits: ['color.lagoon'],
     defaultAppearance: {
       bodyColor: 'lagoon',
@@ -231,6 +235,7 @@ export const EGGS: Record<EggType, EggDef> = {
     personality: { curiosity: 60, confidence: 50, playfulness: 45 },
     affinities: { woodland: 8, aquatic: 8 },
     preferences: { favoriteFood: 'clover', dislikedFood: 'pondPlum', favoritePlace: 'garden' },
+    preferencePool: { favoriteFood: ['clover', 'dewberry', 'pondPlum'], dislikedFood: ['pondPlum', 'cress', 'clover'], favoritePlace: ['garden', 'pond'] },
     starterTraits: ['feature.glow', 'color.starlight'],
     defaultAppearance: {
       bodyColor: 'lilac',

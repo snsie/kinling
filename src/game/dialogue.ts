@@ -4,6 +4,7 @@ import { FOODS, KEEPSAKES, ROUTES } from './catalog';
 import type { Mood } from './needs';
 import { deriveMood } from './needs';
 import type { FoodId, KeepsakeId, RouteId, SaveData } from './types';
+import { activeKinling } from './state';
 import { pick } from './util';
 
 type Rand = () => number;
@@ -43,13 +44,13 @@ const TOO_TIRED = ['I\'m too sleepy to play right now... maybe a nap first?', 'M
 const DIMINISHED = ' (It\'s a little less exciting the third time in a row.)';
 
 export function greetingLine(save: SaveData, rand: Rand = Math.random): string {
-  const c = save.creature;
+  const c = activeKinling(save);
   if (!c) return 'Hello!';
   return fill(pick(GREETINGS[deriveMood(c.needs)], rand), { player: save.player.name ?? 'friend' });
 }
 
 export function returnLine(save: SaveData, rand: Rand = Math.random): string {
-  const c = save.creature;
+  const c = activeKinling(save);
   const place = c?.preferences.favoritePlace === 'pond' ? 'the pond' : 'the garden';
   return fill(pick(RETURN_LINES, rand), { place });
 }
@@ -85,7 +86,7 @@ export function revertLine(rand: Rand = Math.random): string {
 }
 
 export function suggestionLine(save: SaveData): string {
-  const c = save.creature;
+  const c = activeKinling(save);
   if (!c) return '';
   const n = c.needs;
   if (n.energy < 30) return 'I\'m getting sleepy. Maybe a rest before our next adventure?';
@@ -100,7 +101,7 @@ export function suggestionLine(save: SaveData): string {
 
 /** Offline conversational replies by simple keyword matching. */
 export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math.random): string {
-  const c = save.creature;
+  const c = activeKinling(save);
   if (!c) return '...';
   const t = text.toLowerCase();
   const player = save.player.name ?? 'friend';

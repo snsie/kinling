@@ -41,6 +41,8 @@ export interface CompletionRequest {
   /** Called with the full text so far while streaming. */
   onText?: (text: string) => void;
   timeoutMs?: number;
+  /** Low-priority work (notes, suggestions) that a queued request may interrupt. */
+  background?: boolean;
 }
 
 export class AiBusyError extends Error {
@@ -99,6 +101,7 @@ export class AiService {
   private cancelLoadFn: (() => void) | null = null;
   private busy = false;
   private interrupted = false;
+  private backgroundActive = false;
   private support: GpuSupport | null = null;
   private lib: WebLLM | null = null;
   private activeModel: ModelId | null = null;
@@ -292,6 +295,7 @@ export class AiService {
     this.worker = null;
     this.engine = null;
     this.busy = false;
+    this.backgroundActive = false;
     this.activeModel = null;
     this.activeVariant = '';
   }
@@ -325,6 +329,8 @@ export class AiService {
   /** Like complete(), but waits its turn if another request is running. */
   async completeQueued(req: CompletionRequest, waitMs = 25_000): Promise<string> {
     const deadline = Date.now() + waitMs;
+    // The player is waiting: background work gives way.
+    if (this.busy && this.backgroundActive) this.interrupt();
     for (;;) {
       if (!(await this.whenIdle(Math.max(0, deadline - Date.now())))) throw new AiNotReadyError();
       try {
@@ -355,6 +361,7 @@ export class AiService {
     const modelId = this.activeModel;
     const variant = this.activeVariant;
     this.busy = true;
+    this.backgroundActive = req.background === true;
     this.interrupted = false;
     this.set({ kind: 'generating', modelId, variant });
     let text = '';
@@ -404,6 +411,7 @@ export class AiService {
     } finally {
       clearTimeout(timer);
       this.busy = false;
+      this.backgroundActive = false;
       if (this.getStatus().kind === 'generating') this.set({ kind: 'ready', modelId, variant });
     }
   }

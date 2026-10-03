@@ -1,5 +1,6 @@
 // JSON export/import of saves. Imports are size-limited, parsed defensively,
 // migrated and fully validated before they can replace anything.
+import { activeKinling } from '../game/state';
 import type { SaveData } from '../game/types';
 import { migrateSave } from './migrations';
 
@@ -19,7 +20,7 @@ export function exportSave(save: SaveData, now = Date.now()): string {
 }
 
 export function exportFileName(save: SaveData, now = Date.now()): string {
-  const name = (save.creature?.name || 'kinling').replace(/[^\p{L}\p{N}_-]+/gu, '-').toLowerCase();
+  const name = (activeKinling(save)?.name || 'kinling').replace(/[^\p{L}\p{N}_-]+/gu, '-').toLowerCase();
   const d = new Date(now);
   const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   return `kinling-${name}-${stamp}.json`;

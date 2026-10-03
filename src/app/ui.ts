@@ -21,7 +21,8 @@ export interface Speech {
 
 export type ChatAttachment =
   | { kind: 'care'; actions: CheckedAction[]; used?: boolean }
-  | { kind: 'evolution'; translation: AppearanceTranslation; text: string };
+  | { kind: 'evolution'; translation: AppearanceTranslation; text: string }
+  | { kind: 'fact'; text: string; saved?: boolean };
 
 export interface UiState {
   anim: CreatureAnim;

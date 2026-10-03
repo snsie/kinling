@@ -2,18 +2,18 @@
 // immediately; then sound/animation/speech; then (optionally) an AI reaction.
 import { useSyncExternalStore } from 'react';
 import { ai } from '../ai/engine';
-import { chatReply, greet, reactTo, translateAppearance, translateCare, writeDiary } from '../ai/companion';
+import { chatReply, greet, reactTo, routeMessage, suggestFact, summarizeChat, translateAppearance, translateCare, writeDiary } from '../ai/companion';
 import { resolveAdventure, type AdventureOutcome } from '../game/adventure';
 import { performCare } from '../game/care';
-import { checkAction, looksLikeAppearanceRequest, looksLikeCareInstruction, type ProposedAction } from '../game/careProposals';
+import { checkAction, type ProposedAction } from '../game/careProposals';
 import { greetingLine, stageUpLine } from '../game/dialogue';
 import { applyEvolution, revertAppearance, type EvolutionRequest } from '../game/evolution';
 import type { Feedback } from '../game/outcome';
-import { addChatMessage, addDiaryEntry, addPlayerFact, extractFact, pendingDiaryEvents, removePlayerFact, forgetMemory, setMemoryPinned } from '../game/social';
+import { addChatMessage, addDiaryEntry, addPlayerFact, extractFact, pendingDiaryEvents, removePlayerFact, forgetMemory, setChatSummary, setMemoryPinned } from '../game/social';
 import { traitLabel } from '../game/traits';
 import type { CareAction, FoodId, SaveData, Settings } from '../game/types';
 import type { MinigameResult } from '../minigame/engine';
-import { draft } from '../game/state';
+import { activeKinling, draft, kinlingById } from '../game/state';
 import { playSfx } from './sfx';
 import { store, type StoreSnapshot } from './store';
 import { ui } from './ui';
@@ -44,7 +44,7 @@ function maybeReact(eventText: string | undefined, delayMs = 400) {
   if (!eventText || !ai.isReady) return;
   setTimeout(() => {
     const save = store.save;
-    if (!save?.creature || ai.isBusy) return;
+    if (!save || !activeKinling(save) || ai.isBusy) return;
     let started = false;
     void reactTo(save, eventText, now(), (t) => {
       if (!t) return;
@@ -65,18 +65,20 @@ function readOnlyWarning(): boolean {
 
 export function doCare(action: CareAction, food?: FoodId): boolean {
   const save = store.save;
-  if (!save?.creature || readOnlyWarning()) return false;
-  const out = performCare(save, action, now(), { food });
+  const k = save && activeKinling(save);
+  if (!save || !k || readOnlyWarning()) return false;
+  const out = performCare(save, k.id, action, now(), { food });
   if (out.feedback.ok) store.update(() => out.save);
   presentFeedback(out.feedback);
   if (out.feedback.ok) maybeReact(out.feedback.aiEvent);
   return out.feedback.ok;
 }
 
-export function finishAdventure(result: MinigameResult): AdventureOutcome | null {
+/** `kinlingId` is the kinling that set out, even if another was selected meanwhile. */
+export function finishAdventure(result: MinigameResult, kinlingId?: string): AdventureOutcome | null {
   const save = store.save;
   if (!save || readOnlyWarning()) return null;
-  const out = resolveAdventure(save, result, now());
+  const out = resolveAdventure(save, kinlingId ?? activeKinling(save)?.id ?? '', result, now());
   if (out.feedback.ok) store.update(() => out.save);
   presentFeedback({ ...out.feedback, toast: out.feedback.ok ? undefined : out.feedback.toast });
   if (!out.feedback.ok && out.feedback.toast) ui.toast(out.feedback.toast, 'warn');
@@ -86,8 +88,9 @@ export function finishAdventure(result: MinigameResult): AdventureOutcome | null
 
 export function doEvolve(request: EvolutionRequest): boolean {
   const save = store.save;
-  if (!save || readOnlyWarning()) return false;
-  const out = applyEvolution(save, request, now());
+  const k = save && activeKinling(save);
+  if (!save || !k || readOnlyWarning()) return false;
+  const out = applyEvolution(save, k.id, request, now());
   if (out.feedback.ok) store.update(() => out.save);
   presentFeedback(out.feedback);
   if (out.feedback.ok) maybeReact(out.feedback.aiEvent, 700);
@@ -96,8 +99,9 @@ export function doEvolve(request: EvolutionRequest): boolean {
 
 export function doRevert(): boolean {
   const save = store.save;
-  if (!save || readOnlyWarning()) return false;
-  const out = revertAppearance(save, now());
+  const k = save && activeKinling(save);
+  if (!save || !k || readOnlyWarning()) return false;
+  const out = revertAppearance(save, k.id, now());
   if (out.feedback.ok) store.update(() => out.save);
   presentFeedback(out.feedback);
   return out.feedback.ok;
@@ -126,7 +130,7 @@ export function runProposedAction(action: ProposedAction): { ok: boolean; explor
 
 export function greetOnArrival(): void {
   const save = store.save;
-  if (!save?.creature) return;
+  if (!save || !activeKinling(save)) return;
   const fb = store.consumeLastTick();
   if (fb?.line) presentFeedback(fb);
   else ui.say(greetingLine(save), 'authored');
@@ -135,7 +139,7 @@ export function greetOnArrival(): void {
 /** Called when the model becomes ready during a session: optional AI greeting if nothing is happening. */
 export function aiGreeting(): void {
   const save = store.save;
-  if (!save?.creature || ai.isBusy) return;
+  if (!save || !activeKinling(save) || ai.isBusy) return;
   void greet(save, now(), (t) => t && ui.stream(t)).then((r) => {
     if (r) ui.say(r.text, 'ai');
   });
@@ -150,59 +154,86 @@ export async function sendChat(text: string): Promise<void> {
   const clean = text.trim();
   if (!clean || chatInFlight) return;
   const before = store.save;
-  if (!before?.creature || readOnlyWarning()) return;
+  const k = before && activeKinling(before);
+  if (!k || readOnlyWarning()) return;
   chatInFlight = true;
+  let reply: Awaited<ReturnType<typeof respond>> = { messageId: null, offerFact: false };
   try {
-    store.update((s) => addChatMessage(s, 'player', clean, 'player', now()));
-    const save = store.save!;
-
-    // Explicit "remember that..." facts are stored in the player's own words.
-    const fact = extractFact(clean);
-    if (fact) {
-      const res = addPlayerFact(save, fact, now());
-      if (res.fact) {
-        store.update(() => res.save);
-        ui.toast(`Saved to "Things you told ${save.creature!.name}"`, 'success');
-      }
-    }
-
-    if (looksLikeAppearanceRequest(clean)) {
-      ui.setChatStreaming('');
-      const translation = await translateAppearance(store.save!, clean, 'evolve');
-      const reply = translation.reply || (translation.request.changes.length ? 'Ooh, a new look? Let\'s see what I could become!' : 'Hmm, I\'m not sure I can grow that. Want to look at my evolution options together?');
-      const id = addCreatureMessage(reply, translation.source === 'ai' && translation.reply ? 'ai' : 'authored');
-      if (id && translation.request.changes.length) ui.attach(id, { kind: 'evolution', translation, text: clean });
-      return;
-    }
-
-    if (looksLikeCareInstruction(clean)) {
-      ui.setChatStreaming('');
-      const care = await translateCare(store.save!, clean, now());
-      if (care.actions.length) {
-        const checked = care.actions.map((a) => checkAction(store.save!, a));
-        const reply = care.reply || 'Ooh, good idea! Shall we?';
-        const id = addCreatureMessage(reply, care.source === 'ai' && care.reply ? 'ai' : 'authored');
-        if (id) ui.attach(id, { kind: 'care', actions: checked });
-        return;
-      }
-    }
-
-    ui.setChatStreaming('');
-    const res = await chatReply(store.save!, clean, now(), (t) => ui.setChatStreaming(t));
-    const reply = fact && !res.text ? 'I\'ll remember that!' : res.text;
-    addCreatureMessage(reply, res.source);
-    ui.say(reply, res.source);
+    reply = await respond(k.id, clean);
   } finally {
     ui.setChatStreaming(null);
     chatInFlight = false;
   }
+  void afterChat(clean, reply.offerFact ? reply.messageId : null);
 }
 
-function addCreatureMessage(text: string, source: 'ai' | 'authored'): string | null {
+/** Store the player's message to a kinling and answer it. Returns the reply's message id. */
+async function respond(kinlingId: string, clean: string): Promise<{ messageId: string | null; offerFact: boolean }> {
+  store.update((s) => addChatMessage(s, kinlingId, 'player', clean, 'player', now()));
+  const save = store.save!;
+
+  // Explicit "remember that..." facts are stored in the player's own words.
+  const fact = extractFact(clean);
+  if (fact) {
+    const res = addPlayerFact(save, fact, now());
+    if (res.fact) {
+      store.update(() => res.save);
+      ui.toast(`Saved to "Things you told ${kinlingById(save, kinlingId)?.name ?? 'your kinling'}"`, 'success');
+    }
+  }
+
+  ui.setChatStreaming('');
+  // "remember that…" is always a chat message, whatever words it contains.
+  const intent = fact ? 'chat' : await routeMessage(clean);
+
+  if (intent === 'evolve') {
+    const translation = await translateAppearance(store.save!, clean, 'evolve');
+    const reply = translation.reply || (translation.request.changes.length ? 'Ooh, a new look? Let\'s see what I could become!' : 'Hmm, I\'m not sure I can grow that. Want to look at my evolution options together?');
+    const id = addCreatureMessage(kinlingId, reply, translation.source === 'ai' && translation.reply ? 'ai' : 'authored');
+    if (id && translation.request.changes.length) ui.attach(id, { kind: 'evolution', translation, text: clean });
+    return { messageId: id, offerFact: false };
+  }
+
+  if (intent === 'care') {
+    const care = await translateCare(store.save!, clean, now());
+    if (care.actions.length) {
+      const checked = care.actions.map((a) => checkAction(store.save!, a));
+      const reply = care.reply || 'Ooh, good idea! Shall we?';
+      const id = addCreatureMessage(kinlingId, reply, care.source === 'ai' && care.reply ? 'ai' : 'authored');
+      if (id) ui.attach(id, { kind: 'care', actions: checked });
+      return { messageId: id, offerFact: false };
+    }
+  }
+
+  const res = await chatReply(store.save!, clean, now(), (t) => ui.setChatStreaming(t));
+  const reply = fact && !res.text ? 'I\'ll remember that!' : res.text;
+  const id = addCreatureMessage(kinlingId, reply, res.source);
+  ui.say(reply, res.source);
+  return { messageId: id, offerFact: !fact };
+}
+
+/**
+ * Low-priority model work once a reply is shown: offer to remember something
+ * the player shared, and fold older chat into the conversation notes. Both
+ * give way the moment the player sends another message.
+ */
+async function afterChat(playerText: string, factReplyId: string | null): Promise<void> {
+  if (!ai.isReady) return;
+  if (factReplyId && store.save) {
+    const fact = await suggestFact(store.save, playerText);
+    if (fact) ui.attach(factReplyId, { kind: 'fact', text: fact });
+  }
+  const save = store.save;
+  if (!save || !store.canWrite) return;
+  const notes = await summarizeChat(save);
+  if (notes && store.canWrite) store.update((s) => setChatSummary(s, notes.kinlingId, notes.text, notes.throughId, now()));
+}
+
+function addCreatureMessage(kinlingId: string, text: string, source: 'ai' | 'authored'): string | null {
   let id: string | null = null;
   store.update((s) => {
-    const next = addChatMessage(s, 'creature', text, source, now());
-    id = next.chat.at(-1)?.id ?? null;
+    const next = addChatMessage(s, kinlingId, 'creature', text, source, now());
+    id = next.kinlings.find((k) => k.id === kinlingId)?.chat.at(-1)?.id ?? null;
     return next;
   });
   return id;
@@ -219,7 +250,7 @@ let diaryInFlight = false;
 
 export async function writeDiaryEntry(onText?: (t: string) => void): Promise<boolean> {
   const save = store.save;
-  if (!save?.creature || diaryInFlight || readOnlyWarning()) return false;
+  if (!save || !activeKinling(save) || diaryInFlight || readOnlyWarning()) return false;
   const events = pendingDiaryEvents(save);
   if (!events.length) return false;
   diaryInFlight = true;

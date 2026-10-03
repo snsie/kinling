@@ -16,6 +16,7 @@ import { Creature } from '../../render/Creature';
 import { ItemIcon } from '../../render/ItemIcon';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
+import { activeKinling } from '../../game/state';
 
 function CostChips({ cost, have }: { cost: MaterialCost; have?: SaveData['inventory']['materials'] }) {
   const entries = (Object.entries(cost) as [MaterialId, number][]).filter(([, n]) => n);
@@ -43,7 +44,7 @@ const SLOT_SECTIONS: { slot: TraitSlot; title: string }[] = [
 ];
 
 export function EvolvePanel({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const stage = lifeStageFor(c.bond);
   const aiStatus = useAiStatus();
   const { evolutionDraft } = useUi();
@@ -54,7 +55,7 @@ export function EvolvePanel({ save, reducedMotion }: { save: SaveData; reducedMo
   const [translation, setTranslation] = useState<AppearanceTranslation | null>(null);
 
   const request: EvolutionRequest = useMemo(() => ({ changes, ...extras }), [changes, extras]);
-  const plan: EvolutionPlan = useMemo(() => planEvolution(save, request), [save, request]);
+  const plan: EvolutionPlan = useMemo(() => planEvolution(save, c.id, request), [save, c.id, request]);
 
   const loadTranslation = (t: AppearanceTranslation, sourceText: string) => {
     setText(sourceText);
@@ -274,8 +275,8 @@ export function EvolvePanel({ save, reducedMotion }: { save: SaveData; reducedMo
       <section className="evo-history" data-reveal="">
         <h3>Change your mind?</h3>
         <p className="hint">Return to the previous look at any time. Materials aren't refunded, but features you've adopted stay yours to wear again for free.</p>
-        <button className="btn" onClick={() => doRevert()} disabled={save.appearanceHistory.length === 0}>
-          {Icon.undo(18)} Revert to previous look {save.appearanceHistory.length ? `(${save.appearanceHistory.length} saved)` : ''}
+        <button className="btn" onClick={() => doRevert()} disabled={c.appearanceHistory.length === 0}>
+          {Icon.undo(18)} Revert to previous look {c.appearanceHistory.length ? `(${c.appearanceHistory.length} saved)` : ''}
         </button>
       </section>
     </div>

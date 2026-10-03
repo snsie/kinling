@@ -3,6 +3,10 @@
 // v1 was the pre-release layout: the player's name lived at `playerName`,
 // memories had no `pinned` flag, AI settings had no download consent, and
 // there was no diary cursor or adventure claim list.
+// v2 had no conversation summary.
+// v3 had a single `creature`, with its memories, chat, appearance history and
+// daily counters at the top level of the save.
+import { playerFeelingFromBond } from '../game/state';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
 import type { SaveData } from '../game/types';
 import { validateSave } from './schema';
@@ -27,6 +31,40 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
     out.claimedRuns = [];
     out.schemaVersion = 2;
     return out;
+  },
+  2: (v2) => ({ ...v2, chatSummary: null, schemaVersion: 3 }),
+  3: (v3) => {
+    const { creature, memories, chat, chatSummary, appearanceHistory, daily, ...out } = v3;
+    const c = creature && typeof creature === 'object' ? (creature as AnyRecord) : null;
+    const d = (daily ?? {}) as AnyRecord;
+    const kinlings: AnyRecord[] = [];
+    const feelings: AnyRecord[] = [];
+    if (c) {
+      kinlings.push({
+        ...c,
+        baseline: { ...(c.personality as AnyRecord) },
+        memories: Array.isArray(memories) ? memories.map((m) => ({ ...(m as AnyRecord), withIds: [], private: false })) : [],
+        chat: Array.isArray(chat) ? chat : [],
+        chatSummary: chatSummary ?? null,
+        appearanceHistory: Array.isArray(appearanceHistory) ? appearanceHistory : [],
+        careLog: d.careLog ?? { feed: [], groom: [], rest: [], play: [] },
+        socialDaily: { day: d.day, personalityDelta: d.personalityDelta, chatBond: d.chatBond ?? 0 },
+      });
+      feelings.push({ ...playerFeelingFromBond(String(c.id), typeof c.bond === 'number' ? c.bond : 0) });
+    }
+    const player = (v3.player ?? {}) as AnyRecord;
+    const facts = Array.isArray(player.facts) ? player.facts.map((f) => ({ ...(f as AnyRecord), shareable: false })) : [];
+    const settings = (v3.settings ?? {}) as AnyRecord;
+    return {
+      ...out,
+      kinlings,
+      activeKinlingId: c ? c.id : null,
+      feelings,
+      conversations: [],
+      player: { ...player, facts },
+      settings: { ...settings, ai: { ...(settings.ai as AnyRecord), memorySearch: false } },
+      schemaVersion: 4,
+    };
   },
 };
 

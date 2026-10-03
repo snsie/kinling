@@ -6,6 +6,7 @@ import { lifeStageFor } from '../game/stage';
 import type { SaveData } from '../game/types';
 import { Creature } from '../render/Creature';
 import { Habitat, timeOfDayFor } from '../render/Habitat';
+import { activeKinling } from '../game/state';
 
 export function SpeechBubble({ name }: { name: string }) {
   const { speech } = useUi();
@@ -21,7 +22,7 @@ export function SpeechBubble({ name }: { name: string }) {
 
 export function Stage({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
   const { anim } = useUi();
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);

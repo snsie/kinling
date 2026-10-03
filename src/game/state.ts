@@ -3,12 +3,14 @@ import { EGGS, FOOD_CAP, FOODS, MATERIAL_CAP } from './catalog';
 import type {
   Appearance,
   CareAction,
-  DailyCounters,
   EggType,
+  Feeling,
   FoodId,
   GameEvent,
   GameEventKind,
   Inventory,
+  Kinling,
+  KinlingDaily,
   MaterialCost,
   MaterialId,
   Memory,
@@ -19,11 +21,17 @@ import type {
   Settings,
   Stats,
 } from './types';
-import { FOOD_IDS, MATERIAL_IDS, PERSONALITY_KEYS, SAVE_SCHEMA_VERSION } from './types';
-import { clamp, dayKey, uid } from './util';
+import { FOOD_IDS, MATERIAL_IDS, PERSONALITY_KEYS, PLAYER_ID, SAVE_SCHEMA_VERSION } from './types';
+import { clamp, createRng, dayKey, hashString, pick, uid } from './util';
 
 export const LIMITS = {
-  memories: 80,
+  kinlings: 4,
+  /** Per kinling. */
+  memories: 200,
+  /** One per ordered pair: 4 kinlings × (3 others + the player). */
+  feelings: 16,
+  conversations: 20,
+  conversationLines: 8,
   chat: 40,
   diary: 60,
   events: 60,
@@ -32,6 +40,7 @@ export const LIMITS = {
   appearanceHistory: 10,
   claimedRuns: 50,
   chatMessageLength: 400,
+  summaryLength: 600,
   diaryLength: 600,
   nameLength: 16,
 } as const;
@@ -41,7 +50,7 @@ export const PERSONALITY_DAILY_CAP = 6;
 
 export function defaultSettings(): Settings {
   return {
-    ai: { enabled: false, modelId: 'Qwen3-1.7B-q4f16_1-MLC', downloadConsent: false },
+    ai: { enabled: false, modelId: 'Qwen3-1.7B-q4f16_1-MLC', downloadConsent: false, memorySearch: false },
     sound: true,
     volume: 0.5,
     reducedMotion: 'system',
@@ -72,16 +81,15 @@ export function emptyInventory(): Inventory {
   return { materials, foods, keepsakes: [] };
 }
 
-export function freshDaily(now: number): DailyCounters {
-  return {
-    day: dayKey(now),
-    personalityDelta: { curiosity: 0, confidence: 0, playfulness: 0 },
-    careLog: { feed: [], groom: [], rest: [], play: [] },
-    chatBond: 0,
-  };
+export function freshDaily(now: number): KinlingDaily {
+  return { day: dayKey(now), personalityDelta: { curiosity: 0, confidence: 0, playfulness: 0 }, chatBond: 0 };
 }
 
-/** A brand-new save at the start of onboarding (no creature yet). */
+export function emptyCareLog(): Record<CareAction, number[]> {
+  return { feed: [], groom: [], rest: [], play: [] };
+}
+
+/** A brand-new save at the start of onboarding (no kinling yet). */
 export function createSave(now: number): SaveData {
   const inventory = emptyInventory();
   inventory.foods.dewberry = 2;
@@ -94,18 +102,17 @@ export function createSave(now: number): SaveData {
     updatedAt: now,
     lastTickAt: now,
     onboarding: { step: 'welcome', egg: null, draftAppearance: null },
-    creature: null,
+    kinlings: [],
+    activeKinlingId: null,
+    feelings: [],
+    conversations: [],
     player: { name: null, facts: [] },
     inventory,
     unlocks: { traits: [], owned: [] },
-    appearanceHistory: [],
-    memories: [],
-    chat: [],
     diary: [],
     events: [],
     diaryCursor: 0,
     stats: emptyStats(),
-    daily: freshDaily(now),
     claimedRuns: [],
     settings: defaultSettings(),
   };
@@ -121,9 +128,75 @@ export function draft(save: SaveData): SaveData {
   return structuredClone(save);
 }
 
-export function ensureDaily(save: SaveData, now: number): void {
-  const key = dayKey(now);
-  if (save.daily.day !== key) save.daily = freshDaily(now);
+export function kinlingById(save: SaveData, id: string | null | undefined): Kinling | null {
+  if (!id) return null;
+  return save.kinlings.find((k) => k.id === id) ?? null;
+}
+
+/** The kinling Care, Talk, Explore and Evolve act on. */
+export function activeKinling(save: SaveData): Kinling | null {
+  return kinlingById(save, save.activeKinlingId) ?? save.kinlings[0] ?? null;
+}
+
+export function feelingOf(save: SaveData, from: string, to: string): Feeling | null {
+  return save.feelings.find((f) => f.from === from && f.to === to) ?? null;
+}
+
+/** A kinling's starting feelings toward the player: warmer the longer they have been friends. */
+export function playerFeelingFromBond(from: string, bond: number): Feeling {
+  const warmth = Math.round(Math.min(60, 20 + bond / 4));
+  return { from, to: PLAYER_ID, warmth, trust: warmth, familiarity: Math.round(Math.min(100, bond / 2)) };
+}
+
+export interface HatchOptions {
+  /** Seeds the personality jitter and preference draw for siblings. */
+  seed?: number;
+}
+
+/**
+ * A newly hatched kinling (not yet added to the save). The first one is
+ * exactly its egg's defaults; later siblings get a seeded ±8 personality
+ * jitter and tastes drawn from the egg's pool, so two kinlings from the same
+ * egg still differ.
+ */
+export function hatchKinling(save: SaveData, egg: EggType, appearance: Appearance, now: number, opts: HatchOptions = {}): Kinling {
+  const def = EGGS[egg];
+  const id = uid('kin');
+  let personality: Personality = { ...def.personality };
+  let prefs = { ...def.preferences };
+  if (save.kinlings.length > 0) {
+    const rand = createRng(opts.seed ?? hashString(id));
+    personality = Object.fromEntries(
+      PERSONALITY_KEYS.map((k) => [k, clamp(Math.round(def.personality[k] + (rand() * 2 - 1) * 8), 0, 100)]),
+    ) as Personality;
+    const pool = def.preferencePool;
+    const favoriteFood = pick(pool.favoriteFood, rand);
+    const disliked = pool.dislikedFood.filter((f) => f !== favoriteFood);
+    prefs = { favoriteFood, dislikedFood: pick(disliked, rand), favoritePlace: pick(pool.favoritePlace, rand) };
+  }
+  return {
+    id,
+    name: '',
+    egg,
+    hatchedAt: now,
+    appearance: { ...appearance, proportions: { ...appearance.proportions } },
+    personality,
+    baseline: { ...personality },
+    needs: { hunger: 62, energy: 85, cleanliness: 90, happiness: 72 },
+    preferences: { ...prefs, knownFavoriteFood: false, knownDislikedFood: false, knownFavoritePlace: false },
+    affinities: { ...def.affinities },
+    bond: 0,
+    memories: [],
+    chat: [],
+    chatSummary: null,
+    appearanceHistory: [],
+    careLog: emptyCareLog(),
+    socialDaily: freshDaily(now),
+  };
+}
+
+export function ensureDaily(k: Kinling, now: number): void {
+  if (k.socialDaily.day !== dayKey(now)) k.socialDaily = freshDaily(now);
 }
 
 export function recordEvent(save: SaveData, kind: GameEventKind, text: string, now: number): GameEvent {
@@ -134,44 +207,50 @@ export function recordEvent(save: SaveData, kind: GameEventKind, text: string, n
 }
 
 export function recordMemory(
-  save: SaveData,
-  memory: { kind: MemoryKind; text: string; tags: string[]; importance: 1 | 2 | 3 },
+  k: Kinling,
+  memory: { kind: MemoryKind; text: string; tags: string[]; importance: 1 | 2 | 3; withIds?: string[]; private?: boolean },
   now: number,
 ): Memory {
-  const m: Memory = { id: uid('mem'), at: now, pinned: false, ...memory, tags: memory.tags.map((t) => t.toLowerCase()) };
-  save.memories.push(m);
-  trimMemories(save);
+  const m: Memory = {
+    id: uid('mem'),
+    at: now,
+    pinned: false,
+    ...memory,
+    withIds: memory.withIds ?? [],
+    private: memory.private ?? false,
+    tags: memory.tags.map((t) => t.toLowerCase()),
+  };
+  k.memories.push(m);
+  trimMemories(k);
   return m;
 }
 
 /** Keep memories bounded: drop the least important, oldest unpinned ones first. */
-export function trimMemories(save: SaveData): void {
-  while (save.memories.length > LIMITS.memories) {
+export function trimMemories(k: Kinling): void {
+  while (k.memories.length > LIMITS.memories) {
     let worst = -1;
-    for (let i = 0; i < save.memories.length; i++) {
-      const m = save.memories[i]!;
+    for (let i = 0; i < k.memories.length; i++) {
+      const m = k.memories[i]!;
       if (m.pinned) continue;
       if (worst === -1) {
         worst = i;
         continue;
       }
-      const w = save.memories[worst]!;
+      const w = k.memories[worst]!;
       if (m.importance < w.importance || (m.importance === w.importance && m.at < w.at)) worst = i;
     }
     if (worst === -1) break;
-    save.memories.splice(worst, 1);
+    k.memories.splice(worst, 1);
   }
 }
 
-export function nudgePersonality(save: SaveData, deltas: Partial<Personality>, now: number): Partial<Personality> {
-  const c = save.creature;
-  if (!c) return {};
-  ensureDaily(save, now);
+export function nudgePersonality(c: Kinling, deltas: Partial<Personality>, now: number): Partial<Personality> {
+  ensureDaily(c, now);
   const applied: Partial<Personality> = {};
   for (const key of PERSONALITY_KEYS) {
     const want = deltas[key];
     if (!want) continue;
-    const used = save.daily.personalityDelta[key];
+    const used = c.socialDaily.personalityDelta[key];
     const room = want > 0 ? PERSONALITY_DAILY_CAP - used : -PERSONALITY_DAILY_CAP - used;
     const step = want > 0 ? Math.min(want, Math.max(0, room)) : Math.max(want, Math.min(0, room));
     const before = c.personality[key];
@@ -179,15 +258,14 @@ export function nudgePersonality(save: SaveData, deltas: Partial<Personality>, n
     const actual = after - before;
     if (actual === 0) continue;
     c.personality[key] = after;
-    save.daily.personalityDelta[key] = used + actual;
+    c.socialDaily.personalityDelta[key] = used + actual;
     applied[key] = actual;
   }
   return applied;
 }
 
-export function addAffinity(save: SaveData, key: 'woodland' | 'aquatic', amount: number): number {
-  const c = save.creature;
-  if (!c || amount <= 0) return 0;
+export function addAffinity(c: Kinling, key: 'woodland' | 'aquatic', amount: number): number {
+  if (amount <= 0) return 0;
   const before = c.affinities[key];
   c.affinities[key] = clamp(before + amount, 0, 100);
   return c.affinities[key] - before;
@@ -251,8 +329,8 @@ export function hasFood(save: SaveData, food: FoodId): boolean {
   return FOODS[food].unlimited === true || save.inventory.foods[food] > 0;
 }
 
-export function recentCareCount(save: SaveData, action: CareAction, now: number, windowMs = 20 * 60 * 1000): number {
-  return save.daily.careLog[action].filter((t) => now - t < windowMs && t <= now).length;
+export function recentCareCount(k: Kinling, action: CareAction, now: number, windowMs = 20 * 60 * 1000): number {
+  return k.careLog[action].filter((t) => now - t < windowMs && t <= now).length;
 }
 
 export function personalityWords(p: Personality): string[] {

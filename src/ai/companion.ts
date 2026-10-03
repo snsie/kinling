@@ -8,11 +8,29 @@ import { slotOf, type EvolutionRequest } from '../game/evolution';
 import { parseAppearanceRequest } from '../game/requestParser';
 import type { ProposedAction } from '../game/careProposals';
 import { parseCareInstruction } from '../game/careProposals';
-import { authoredDiary } from '../game/social';
+import { replyBudget, ruleIntent, type Intent } from '../game/intent';
+import { authoredDiary, factIsGrounded, hasFact, mightContainFact, needsSummary, unsummarizedMessages } from '../game/social';
+import { activeKinling, LIMITS } from '../game/state';
 import type { GameEvent, SaveData } from '../game/types';
 import { ai, AiInterruptedError } from './engine';
-import { careMessages, careSchema, chatMessages, cleanReply, diaryMessages, evolutionMessages, evolutionSchema, greetingMessages, reactionMessages, toneIsSafe } from './prompts';
-import { mergeKeep, parseCareProposal, parseEvolutionProposal } from './proposals';
+import {
+  careMessages,
+  careSchema,
+  chatMessages,
+  cleanReply,
+  diaryMessages,
+  evolutionMessages,
+  evolutionSchema,
+  factMessages,
+  factSchema,
+  greetingMessages,
+  intentMessages,
+  intentSchema,
+  reactionMessages,
+  summaryMessages,
+  toneIsSafe,
+} from './prompts';
+import { mergeKeep, parseCareProposal, parseEvolutionProposal, parseFactProposal, parseIntent } from './proposals';
 
 export interface TextResult {
   text: string;
@@ -29,17 +47,35 @@ function usable(text: string): boolean {
   return text.length >= 2 && toneIsSafe(text);
 }
 
+/**
+ * Decide what a chat message is asking for. Rules answer clear cases (and
+ * everything when AI is off); the model breaks ties for the rest.
+ */
+export async function routeMessage(text: string): Promise<Intent> {
+  const rule = ruleIntent(text);
+  if (rule.confident || !ai.isLoaded) return rule.intent;
+  try {
+    const raw = await ai.completeQueued({ messages: intentMessages(text), maxTokens: 16, temperature: 0, jsonSchema: intentSchema(), timeoutMs: 10_000 });
+    return parseIntent(raw) ?? rule.intent;
+  } catch (err) {
+    if (!(err instanceof AiInterruptedError)) logFallback('routing', err);
+    return rule.intent;
+  }
+}
+
 /** Stream a reply to the player. Falls back to authored text on any problem. */
 export async function chatReply(save: SaveData, playerText: string, now: number, onText?: (t: string) => void): Promise<TextResult> {
   const fallback = () => ({ text: offlineChatReply(save, playerText), source: 'authored' as const });
   if (!ai.isLoaded) return fallback();
+  const budget = replyBudget(playerText);
+  const clean = (t: string) => cleanReply(t, budget.sentences, budget.maxChars);
   try {
-    const raw = await ai.completeQueued({ messages: chatMessages(save, playerText, now), maxTokens: 80, temperature: 0.8, onText: (t) => onText?.(cleanReply(t)) });
-    const text = cleanReply(raw);
+    const raw = await ai.completeQueued({ messages: chatMessages(save, playerText, now, budget), maxTokens: budget.maxTokens, temperature: 0.8, onText: (t) => onText?.(clean(t)) });
+    const text = clean(raw);
     return usable(text) ? { text, source: 'ai' } : fallback();
   } catch (err) {
     if (err instanceof AiInterruptedError) {
-      const text = cleanReply(err.partial);
+      const text = clean(err.partial);
       return text ? { text, source: 'ai', interrupted: true } : { text: '…', source: 'authored', interrupted: true };
     }
     logFallback('chat', err);
@@ -82,6 +118,38 @@ export async function writeDiary(save: SaveData, events: GameEvent[], onText?: (
   } catch (err) {
     logFallback('diary', err);
     return fallback();
+  }
+}
+
+/**
+ * Background: spot a lasting fact in the player's message for them to confirm.
+ * Skipped when the model is busy or the message clearly has no fact.
+ */
+export async function suggestFact(save: SaveData, playerText: string): Promise<string | null> {
+  if (!ai.isReady || ai.isBusy || !mightContainFact(playerText)) return null;
+  try {
+    const raw = await ai.complete({ messages: factMessages(playerText), maxTokens: 40, temperature: 0.1, jsonSchema: factSchema(), timeoutMs: 15_000, background: true });
+    const fact = parseFactProposal(raw);
+    if (!fact || !factIsGrounded(fact, playerText) || hasFact(save, fact) || !toneIsSafe(fact)) return null;
+    return fact;
+  } catch (err) {
+    if (!(err instanceof AiInterruptedError)) logFallback('fact suggestion', err);
+    return null;
+  }
+}
+
+/** Background: fold older chat into the conversation notes once enough has piled up. */
+export async function summarizeChat(save: SaveData): Promise<{ kinlingId: string; text: string; throughId: string } | null> {
+  const k = activeKinling(save);
+  if (!ai.isReady || ai.isBusy || !k || !needsSummary(k)) return null;
+  const batch = unsummarizedMessages(k);
+  try {
+    const raw = await ai.complete({ messages: summaryMessages(save, batch), maxTokens: 140, temperature: 0.3, timeoutMs: 30_000, background: true });
+    const text = cleanReply(raw, 4, LIMITS.summaryLength);
+    return usable(text) && text.length > 20 ? { kinlingId: k.id, text, throughId: batch.at(-1)!.id } : null;
+  } catch (err) {
+    if (!(err instanceof AiInterruptedError)) logFallback('chat notes', err);
+    return null;
   }
 }
 

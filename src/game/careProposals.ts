@@ -3,8 +3,8 @@
 // checked again against the live save when performed.
 import { FOODS, ROUTES } from './catalog';
 import { routeAvailability } from './adventure';
-import { hasFood } from './state';
-import type { FoodId, RouteId, SaveData } from './types';
+import { activeKinling, hasFood } from './state';
+import type { FoodId, Kinling, RouteId, SaveData } from './types';
 import { FOOD_IDS, ROUTE_IDS } from './types';
 
 export type ProposedAction =
@@ -66,10 +66,9 @@ export function coerceActions(raw: unknown): ProposedAction[] {
   return out.filter((a) => (seen.has(a.type) ? false : (seen.add(a.type), true))).slice(0, MAX_PROPOSED_ACTIONS);
 }
 
-export function checkAction(save: SaveData, action: ProposedAction): CheckedAction {
-  const c = save.creature;
+export function checkAction(save: SaveData, action: ProposedAction, c: Kinling | null = activeKinling(save)): CheckedAction {
   const label = actionLabel(action);
-  if (!c) return { action, label, available: false, reason: 'No creature yet.' };
+  if (!c) return { action, label, available: false, reason: 'No kinling yet.' };
   switch (action.type) {
     case 'feed':
       if (!hasFood(save, action.food)) return { action, label, available: false, reason: `No ${FOODS[action.food].name} in the bag.` };
@@ -79,7 +78,7 @@ export function checkAction(save: SaveData, action: ProposedAction): CheckedActi
       if (c.needs.energy < 10) return { action, label, available: false, reason: 'Too sleepy to play.' };
       return { action, label, available: true };
     case 'explore': {
-      const r = routeAvailability(save, action.route);
+      const r = routeAvailability(save, action.route, c);
       return { action, label, available: r.available, reason: r.reason };
     }
     default:
@@ -90,10 +89,11 @@ export function checkAction(save: SaveData, action: ProposedAction): CheckedActi
 /** Offline guess at care instructions in player text. */
 export function parseCareInstruction(text: string, save: SaveData): ProposedAction[] {
   const t = text.toLowerCase();
+  const c = activeKinling(save);
   const actions: ProposedAction[] = [];
   if (/\b(eat|feed|snack|food|hungry|meal|dinner|lunch|breakfast)\b/.test(t)) {
     const food = (Object.keys(FOODS) as FoodId[]).find((f) => t.includes(FOODS[f].name.toLowerCase()) || t.includes(f.toLowerCase()))
-      ?? (save.creature && hasFood(save, save.creature.preferences.favoriteFood) && save.creature.preferences.knownFavoriteFood ? save.creature.preferences.favoriteFood : 'seedBun');
+      ?? (c && hasFood(save, c.preferences.favoriteFood) && c.preferences.knownFavoriteFood ? c.preferences.favoriteFood : 'seedBun');
     actions.push({ type: 'feed', food: /berr/.test(t) ? 'dewberry' : /plum/.test(t) ? 'pondPlum' : /clover/.test(t) ? 'clover' : /cress/.test(t) ? 'cress' : food });
   }
   if (/\b(nap|sleep|rest|bed|tired|lie down)\b/.test(t)) actions.push({ type: 'rest' });

@@ -157,25 +157,35 @@ export type TraitId =
   | 'feature.fins'
   | 'feature.wings';
 
-export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference'] as const;
+/** Game-event kinds first; then memories of conversations with another kinling or the player. */
+export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference', 'kinling-chat', 'player-chat'] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
-/** A memory recorded by game code from a real game event (never from AI text). */
+/**
+ * One kinling's memory. Event memories are written by game code from real game
+ * events; conversation memories are checked against their transcript first.
+ */
 export interface Memory {
   id: string;
   at: number;
   kind: MemoryKind;
+  /** Kinling ids (or 'player') this memory is about. */
+  withIds: string[];
   text: string;
   tags: string[];
   importance: 1 | 2 | 3;
   pinned: boolean;
+  /** Never shown to another kinling. */
+  private: boolean;
 }
 
-/** Something the player explicitly told the creature. Stored apart from memories. */
+/** Something the player explicitly told their kinlings. Stored apart from memories. */
 export interface PlayerFact {
   id: string;
   at: number;
   text: string;
+  /** The player allows kinlings to mention this to each other. */
+  shareable: boolean;
 }
 
 export const EVENT_KINDS = [
@@ -211,6 +221,17 @@ export interface ChatMessage {
   source: 'player' | 'ai' | 'authored';
 }
 
+/**
+ * Model-written notes about older conversation that no longer fits in the
+ * prompt. Only ever shown to the model, labelled as possibly fuzzy.
+ */
+export interface ChatSummary {
+  text: string;
+  at: number;
+  /** Id of the newest chat message folded into the notes. */
+  throughId: string;
+}
+
 export interface DiaryEntry {
   id: string;
   at: number;
@@ -220,7 +241,7 @@ export interface DiaryEntry {
   eventIds: string[];
 }
 
-export const MODEL_IDS = ['Qwen3-1.7B-q4f16_1-MLC', 'Qwen3-0.6B-q4f16_1-MLC'] as const;
+export const MODEL_IDS = ['Qwen3-1.7B-q4f16_1-MLC', 'Qwen3-0.6B-q4f16_1-MLC', 'Qwen3-4B-q4f16_1-MLC'] as const;
 export type ModelId = (typeof MODEL_IDS)[number];
 
 export const MOTION_PREFS = ['system', 'reduce', 'full'] as const;
@@ -233,6 +254,8 @@ export interface Settings {
     modelId: ModelId;
     /** Player has read the download explanation and agreed to download. */
     downloadConsent: boolean;
+    /** Player agreed to the extra embedding model download for memory search. */
+    memorySearch: boolean;
   };
   sound: boolean;
   volume: number;
@@ -256,14 +279,59 @@ export interface Stats {
   bestScore: Record<RouteId, number>;
 }
 
-export interface DailyCounters {
+/** Per-kinling counters that reset each local day. */
+export interface KinlingDaily {
   /** Local date key YYYY-MM-DD. */
   day: string;
   /** Personality change already applied today (bounded per day). */
   personalityDelta: Personality;
+  /** Bond already earned from chatting today. */
+  chatBond: number;
+}
+
+/** A creature plus everything that belongs to it alone. */
+export interface Kinling extends Creature {
+  /** Personality at hatch; lifetime drift is measured from here. */
+  baseline: Personality;
+  memories: Memory[];
+  chat: ChatMessage[];
+  chatSummary: ChatSummary | null;
+  appearanceHistory: Appearance[];
   /** Recent care actions for diminishing returns: action -> timestamps (ms). */
   careLog: Record<CareAction, number[]>;
-  chatBond: number;
+  socialDaily: KinlingDaily;
+}
+
+/** Feelings target either another kinling (by id) or the player. */
+export const PLAYER_ID = 'player';
+
+/** How one kinling feels about someone. One-way: A→B can differ from B→A. */
+export interface Feeling {
+  from: string;
+  /** A kinling id, or PLAYER_ID. */
+  to: string;
+  /** −30..100 (toward the player, never below 0). */
+  warmth: number;
+  /** −30..100 */
+  trust: number;
+  /** 0..100 */
+  familiarity: number;
+}
+
+export interface ConversationLine {
+  speaker: string;
+  text: string;
+}
+
+/** A conversation two kinlings had in the room, as overheard by the player. */
+export interface ConversationLog {
+  id: string;
+  at: number;
+  a: string;
+  b: string;
+  topic: string;
+  lines: ConversationLine[];
+  source: 'ai' | 'authored';
 }
 
 export const ONBOARDING_STEPS = [
@@ -291,7 +359,7 @@ export interface Unlocks {
   owned: TraitId[];
 }
 
-export const SAVE_SCHEMA_VERSION = 2;
+export const SAVE_SCHEMA_VERSION = 4;
 
 export interface SaveData {
   schemaVersion: typeof SAVE_SCHEMA_VERSION;
@@ -303,19 +371,22 @@ export interface SaveData {
   /** Last time game time advanced (needs decay is computed from this). */
   lastTickAt: number;
   onboarding: OnboardingState;
-  creature: Creature | null;
+  /** At most four; the first is hatched during onboarding. */
+  kinlings: Kinling[];
+  /** The kinling Care, Talk, Explore and Evolve act on. Null only before hatching. */
+  activeKinlingId: string | null;
+  feelings: Feeling[];
+  conversations: ConversationLog[];
   player: { name: string | null; facts: PlayerFact[] };
+  /** Shared by every kinling. */
   inventory: Inventory;
+  /** Shared by every kinling. */
   unlocks: Unlocks;
-  appearanceHistory: Appearance[];
-  memories: Memory[];
-  chat: ChatMessage[];
   diary: DiaryEntry[];
   events: GameEvent[];
   /** Id of the newest event already covered by a diary entry. */
   diaryCursor: number;
   stats: Stats;
-  daily: DailyCounters;
   /** Adventure run ids whose rewards were already granted (bounded). */
   claimedRuns: string[];
   settings: Settings;

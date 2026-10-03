@@ -30,6 +30,7 @@ import { Minigame } from '../Minigame';
 import { Kinetic, useReveal } from '../motion';
 import { NeedsPanel } from '../Needs';
 import { Stage } from '../Stage';
+import { activeKinling } from '../../game/state';
 
 const STEPS: { id: OnboardingStep; label: string }[] = [
   { id: 'welcome', label: 'Welcome' },
@@ -433,7 +434,7 @@ function HatchStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boo
 }
 
 function NameStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const [name, setName] = useState('');
   const [player, setPlayer] = useState('');
   const [idea] = useState(() => NAME_IDEAS[Math.floor(Math.random() * NAME_IDEAS.length)]!);
@@ -489,7 +490,7 @@ function NameStep({ save, reducedMotion }: { save: SaveData; reducedMotion: bool
 }
 
 function FirstCareStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const done = save.stats.feeds + save.stats.plays + save.stats.grooms + save.stats.rests > 0;
   useEffect(() => {
     if (!done) ui.say(`${c.name} is a little hungry and full of wiggles. Try a snack or a game!`, 'authored');
@@ -529,7 +530,7 @@ function FirstCareStep({ save, reducedMotion }: { save: SaveData; reducedMotion:
 }
 
 function GardenStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const [phase, setPhase] = useState<'intro' | 'play' | 'done'>('intro');
   const [rewards, setRewards] = useState<RewardSummary | null>(null);
   const [seed] = useState(randomSeed);

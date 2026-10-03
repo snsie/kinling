@@ -318,8 +318,8 @@ await step('export backup produces a validated JSON file', async () => {
   const path = await download.path();
   exported = JSON.parse(readFileSync(path, 'utf8'));
   expect(exported.format === 'kinling-save', 'format tag');
-  expect(exported.save.schemaVersion === 2, 'schema version');
-  expect(exported.save.creature.name === 'Mochi', 'creature name');
+  expect(exported.save.schemaVersion === 4, 'schema version');
+  expect(exported.save.kinlings[0].name === 'Mochi', 'kinling name');
   writeFileSync(join(OUT, 'exported-save.json'), JSON.stringify(exported, null, 2));
   return `${download.suggestedFilename()} (${JSON.stringify(exported).length} bytes)`;
 });
@@ -335,7 +335,7 @@ await step('malformed import is rejected with a clear message', async () => {
 await step('import a modified backup (paddle tail earned) and use the paddle-tail route', async () => {
   const mod = structuredClone(exported);
   const s = mod.save;
-  s.creature.affinities.aquatic = 26;
+  s.kinlings[0].affinities.aquatic = 26;
   s.stats.pondTrips = Math.max(1, s.stats.pondTrips);
   s.inventory.materials.reed = 6;
   s.inventory.materials.shell = 6;
