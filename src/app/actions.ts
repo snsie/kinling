@@ -1,0 +1,267 @@
+// The controller: every player action goes through here. Game rules resolve
+// immediately; then sound/animation/speech; then (optionally) an AI reaction.
+import { useSyncExternalStore } from 'react';
+import { ai } from '../ai/engine';
+import { chatReply, greet, reactTo, translateAppearance, translateCare, writeDiary } from '../ai/companion';
+import { resolveAdventure, type AdventureOutcome } from '../game/adventure';
+import { performCare } from '../game/care';
+import { checkAction, looksLikeAppearanceRequest, looksLikeCareInstruction, type ProposedAction } from '../game/careProposals';
+import { greetingLine, stageUpLine } from '../game/dialogue';
+import { applyEvolution, revertAppearance, type EvolutionRequest } from '../game/evolution';
+import type { Feedback } from '../game/outcome';
+import { addChatMessage, addDiaryEntry, addPlayerFact, extractFact, pendingDiaryEvents, removePlayerFact, forgetMemory, setMemoryPinned } from '../game/social';
+import { traitLabel } from '../game/traits';
+import type { CareAction, FoodId, SaveData, Settings } from '../game/types';
+import type { MinigameResult } from '../minigame/engine';
+import { draft } from '../game/state';
+import { playSfx } from './sfx';
+import { store, type StoreSnapshot } from './store';
+import { ui } from './ui';
+
+export function useStore(): StoreSnapshot {
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+function now() {
+  return Date.now();
+}
+
+/** Show feedback from a rules outcome: line, animation, sound, toasts. */
+export function presentFeedback(f: Feedback): void {
+  if (f.line) ui.say(f.line, 'authored');
+  if (f.animation) ui.animate(f.animation);
+  playSfx(f.sound);
+  if (f.toast) ui.toast(f.toast, f.ok ? 'success' : 'warn');
+  if (f.unlocked?.length) ui.toast(`New evolution option${f.unlocked.length > 1 ? 's' : ''}: ${f.unlocked.map(traitLabel).join(', ')}`, 'success');
+  if (f.stageUp) {
+    ui.toast(`Your kinling grew into a ${f.stageUp}!`, 'success');
+    setTimeout(() => ui.say(stageUpLine(f.stageUp!), 'authored'), 2600);
+  }
+}
+
+/** If the model is ready and idle, replace the authored line with a short AI reaction. */
+function maybeReact(eventText: string | undefined, delayMs = 400) {
+  if (!eventText || !ai.isReady) return;
+  setTimeout(() => {
+    const save = store.save;
+    if (!save?.creature || ai.isBusy) return;
+    let started = false;
+    void reactTo(save, eventText, now(), (t) => {
+      if (!t) return;
+      started = true;
+      ui.stream(t);
+    }).then((res) => {
+      if (res) ui.say(res.text, 'ai');
+      else if (started) ui.endStream();
+    });
+  }, delayMs);
+}
+
+function readOnlyWarning(): boolean {
+  if (store.canWrite) return false;
+  ui.toast('This tab is read-only because Kinling is open in another tab. Use "Play here" to switch.', 'warn');
+  return true;
+}
+
+export function doCare(action: CareAction, food?: FoodId): boolean {
+  const save = store.save;
+  if (!save?.creature || readOnlyWarning()) return false;
+  const out = performCare(save, action, now(), { food });
+  if (out.feedback.ok) store.update(() => out.save);
+  presentFeedback(out.feedback);
+  if (out.feedback.ok) maybeReact(out.feedback.aiEvent);
+  return out.feedback.ok;
+}
+
+export function finishAdventure(result: MinigameResult): AdventureOutcome | null {
+  const save = store.save;
+  if (!save || readOnlyWarning()) return null;
+  const out = resolveAdventure(save, result, now());
+  if (out.feedback.ok) store.update(() => out.save);
+  presentFeedback({ ...out.feedback, toast: out.feedback.ok ? undefined : out.feedback.toast });
+  if (!out.feedback.ok && out.feedback.toast) ui.toast(out.feedback.toast, 'warn');
+  if (out.feedback.ok) maybeReact(out.feedback.aiEvent, 900);
+  return out;
+}
+
+export function doEvolve(request: EvolutionRequest): boolean {
+  const save = store.save;
+  if (!save || readOnlyWarning()) return false;
+  const out = applyEvolution(save, request, now());
+  if (out.feedback.ok) store.update(() => out.save);
+  presentFeedback(out.feedback);
+  if (out.feedback.ok) maybeReact(out.feedback.aiEvent, 700);
+  return out.feedback.ok;
+}
+
+export function doRevert(): boolean {
+  const save = store.save;
+  if (!save || readOnlyWarning()) return false;
+  const out = revertAppearance(save, now());
+  if (out.feedback.ok) store.update(() => out.save);
+  presentFeedback(out.feedback);
+  return out.feedback.ok;
+}
+
+/** Run a proposed action after the player confirmed it. Re-validated against the live save. */
+export function runProposedAction(action: ProposedAction): { ok: boolean; explore?: ProposedAction & { type: 'explore' } } {
+  const save = store.save;
+  if (!save) return { ok: false };
+  const check = checkAction(save, action);
+  if (!check.available) {
+    ui.toast(check.reason ?? 'That is not possible right now.', 'warn');
+    return { ok: false };
+  }
+  switch (action.type) {
+    case 'feed':
+      return { ok: doCare('feed', action.food) };
+    case 'groom':
+    case 'rest':
+    case 'play':
+      return { ok: doCare(action.type) };
+    case 'explore':
+      return { ok: true, explore: action };
+  }
+}
+
+export function greetOnArrival(): void {
+  const save = store.save;
+  if (!save?.creature) return;
+  const fb = store.consumeLastTick();
+  if (fb?.line) presentFeedback(fb);
+  else ui.say(greetingLine(save), 'authored');
+}
+
+/** Called when the model becomes ready during a session: optional AI greeting if nothing is happening. */
+export function aiGreeting(): void {
+  const save = store.save;
+  if (!save?.creature || ai.isBusy) return;
+  void greet(save, now(), (t) => t && ui.stream(t)).then((r) => {
+    if (r) ui.say(r.text, 'ai');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Conversation
+
+let chatInFlight = false;
+
+export async function sendChat(text: string): Promise<void> {
+  const clean = text.trim();
+  if (!clean || chatInFlight) return;
+  const before = store.save;
+  if (!before?.creature || readOnlyWarning()) return;
+  chatInFlight = true;
+  try {
+    store.update((s) => addChatMessage(s, 'player', clean, 'player', now()));
+    const save = store.save!;
+
+    // Explicit "remember that..." facts are stored in the player's own words.
+    const fact = extractFact(clean);
+    if (fact) {
+      const res = addPlayerFact(save, fact, now());
+      if (res.fact) {
+        store.update(() => res.save);
+        ui.toast(`Saved to "Things you told ${save.creature!.name}"`, 'success');
+      }
+    }
+
+    if (looksLikeAppearanceRequest(clean)) {
+      ui.setChatStreaming('');
+      const translation = await translateAppearance(store.save!, clean, 'evolve');
+      const reply = translation.reply || (translation.request.changes.length ? 'Ooh, a new look? Let\'s see what I could become!' : 'Hmm, I\'m not sure I can grow that. Want to look at my evolution options together?');
+      const id = addCreatureMessage(reply, translation.source === 'ai' && translation.reply ? 'ai' : 'authored');
+      if (id && translation.request.changes.length) ui.attach(id, { kind: 'evolution', translation, text: clean });
+      return;
+    }
+
+    if (looksLikeCareInstruction(clean)) {
+      ui.setChatStreaming('');
+      const care = await translateCare(store.save!, clean, now());
+      if (care.actions.length) {
+        const checked = care.actions.map((a) => checkAction(store.save!, a));
+        const reply = care.reply || 'Ooh, good idea! Shall we?';
+        const id = addCreatureMessage(reply, care.source === 'ai' && care.reply ? 'ai' : 'authored');
+        if (id) ui.attach(id, { kind: 'care', actions: checked });
+        return;
+      }
+    }
+
+    ui.setChatStreaming('');
+    const res = await chatReply(store.save!, clean, now(), (t) => ui.setChatStreaming(t));
+    const reply = fact && !res.text ? 'I\'ll remember that!' : res.text;
+    addCreatureMessage(reply, res.source);
+    ui.say(reply, res.source);
+  } finally {
+    ui.setChatStreaming(null);
+    chatInFlight = false;
+  }
+}
+
+function addCreatureMessage(text: string, source: 'ai' | 'authored'): string | null {
+  let id: string | null = null;
+  store.update((s) => {
+    const next = addChatMessage(s, 'creature', text, source, now());
+    id = next.chat.at(-1)?.id ?? null;
+    return next;
+  });
+  return id;
+}
+
+export function stopGenerating(): void {
+  ai.interrupt();
+}
+
+// ---------------------------------------------------------------------------
+// Diary, memories, facts, settings
+
+let diaryInFlight = false;
+
+export async function writeDiaryEntry(onText?: (t: string) => void): Promise<boolean> {
+  const save = store.save;
+  if (!save?.creature || diaryInFlight || readOnlyWarning()) return false;
+  const events = pendingDiaryEvents(save);
+  if (!events.length) return false;
+  diaryInFlight = true;
+  try {
+    const res = await writeDiary(save, events, onText);
+    store.update((s) => addDiaryEntry(s, res.text, res.source, events.map((e) => e.id), now()));
+    ui.toast('Diary entry written.', 'success');
+    playSfx('chime');
+    return true;
+  } finally {
+    diaryInFlight = false;
+  }
+}
+
+export function addFact(text: string): boolean {
+  const save = store.save;
+  if (!save || readOnlyWarning()) return false;
+  const res = addPlayerFact(save, text, now());
+  if (!res.fact) return false;
+  store.update(() => res.save);
+  return true;
+}
+
+export function removeFact(id: string) {
+  if (readOnlyWarning()) return;
+  store.update((s) => removePlayerFact(s, id));
+}
+
+export function pinMemory(id: string, pinned: boolean) {
+  if (readOnlyWarning()) return;
+  store.update((s) => setMemoryPinned(s, id, pinned));
+}
+
+export function deleteMemory(id: string) {
+  if (readOnlyWarning()) return;
+  store.update((s) => forgetMemory(s, id));
+}
+
+export function updateSettings(fn: (s: Settings) => void) {
+  store.update((save: SaveData) => {
+    const next = draft(save);
+    fn(next.settings);
+    return next;
+  });
+}

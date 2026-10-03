@@ -1,0 +1,531 @@
+/* Creature and egg animations. Animated parts are drawn around their own
+   local origin, so transforms pivot at (0, 0) of each .kin-pivot group. */
+
+.kin-svg {
+  overflow: visible;
+}
+
+.kin-pivot {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+
+/* ---- idle: breathing, blinking, tail wag, ear twitch -------------------- */
+.kin-bob {
+  animation: kin-breathe 3.2s ease-in-out infinite;
+}
+.kin-eye {
+  animation: kin-blink 4.8s ease-in-out infinite;
+}
+.kin-tail {
+  animation: kin-wag 2.6s ease-in-out infinite;
+}
+.kin-ear-l {
+  animation: kin-twitch-l 7s ease-in-out infinite;
+}
+.kin-ear-r {
+  animation: kin-twitch-r 7s ease-in-out infinite 2.3s;
+}
+.kin-wing-l {
+  animation: kin-flutter-l 0.9s ease-in-out infinite alternate;
+}
+.kin-wing-r {
+  animation: kin-flutter-r 0.9s ease-in-out infinite alternate;
+}
+.kin-glow {
+  animation: kin-glow 2.8s ease-in-out infinite;
+}
+.kin-fin {
+  animation: kin-fin 3.4s ease-in-out infinite;
+}
+.kin-arm-l {
+  animation: kin-arm-l 3.2s ease-in-out infinite;
+}
+.kin-arm-r {
+  animation: kin-arm-r 3.2s ease-in-out infinite;
+}
+
+/* ---- happy -------------------------------------------------------------- */
+.kin--happy .kin-bob {
+  animation: kin-bounce 0.75s ease-in-out infinite;
+}
+.kin--happy .kin-tail {
+  animation-duration: 0.5s;
+}
+.kin--happy .kin-arm-l,
+.kin--happy .kin-arm-r {
+  animation-duration: 0.75s;
+}
+
+/* ---- eating ------------------------------------------------------------- */
+.kin--eating .kin-head {
+  animation: kin-nod 0.55s ease-in-out infinite;
+}
+.kin-mouth {
+  animation: kin-chomp 0.55s ease-in-out infinite;
+}
+
+/* ---- playing ------------------------------------------------------------ */
+.kin--playing .kin-bob {
+  animation: kin-hop 0.62s cubic-bezier(0.3, 0, 0.4, 1) infinite;
+}
+.kin--playing .kin-shadow,
+.kin--happy .kin-shadow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: kin-shadow 0.62s cubic-bezier(0.3, 0, 0.4, 1) infinite;
+}
+.kin--happy .kin-shadow {
+  animation-duration: 0.75s;
+}
+.kin--playing .kin-tail {
+  animation-duration: 0.4s;
+}
+
+/* ---- sleeping ----------------------------------------------------------- */
+.kin--sleeping .kin-bob {
+  animation: kin-sleep 4.2s ease-in-out infinite;
+}
+.kin--sleeping .kin-head {
+  transform: translateY(3px) rotate(6deg);
+}
+.kin--sleeping .kin-tail,
+.kin--sleeping .kin-ear-l,
+.kin--sleeping .kin-ear-r,
+.kin--sleeping .kin-arm-l,
+.kin--sleeping .kin-arm-r {
+  animation: none;
+}
+.kin--sleeping .kin-wing-l,
+.kin--sleeping .kin-wing-r {
+  animation-duration: 2.4s;
+}
+
+/* ---- grooming ----------------------------------------------------------- */
+.kin--grooming .kin-bob {
+  animation: kin-wiggle 0.8s ease-in-out infinite;
+}
+
+/* ---- puzzled ------------------------------------------------------------ */
+.kin--puzzled .kin-head {
+  animation: kin-tilt 0.5s ease-out forwards;
+}
+
+/* ---- moving (minigame) -------------------------------------------------- */
+.kin--moving .kin-bob {
+  animation: kin-walk 0.34s ease-in-out infinite;
+}
+
+/* ---- effects ------------------------------------------------------------ */
+.kin-fx-float {
+  animation: kin-float 2.2s ease-out infinite;
+}
+.kin-fx-z {
+  animation: kin-z 3s ease-out infinite;
+}
+.kin-fx-crumb {
+  animation: kin-crumb 0.9s ease-in infinite;
+}
+.kin-fx-bubble {
+  animation: kin-bubble 2.4s ease-out infinite;
+}
+.kin-fx-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: kin-twinkle 1.6s ease-in-out infinite;
+}
+.kin-fx-bob {
+  animation: kin-qbob 1.2s ease-in-out infinite;
+}
+.kin-fx-d1 {
+  animation-delay: 0.6s;
+}
+.kin-fx-d2 {
+  animation-delay: 1.2s;
+}
+
+/* ---- still poses (reduced motion) --------------------------------------- */
+.kin--still,
+.kin--still *,
+.egg--still,
+.egg--still * {
+  animation: none !important;
+}
+.kin--still.kin--puzzled .kin-head {
+  transform: rotate(10deg);
+}
+.kin--still.kin--sleeping .kin-bob {
+  transform: scale(1.02, 0.96);
+}
+.kin--still.kin--happy .kin-bob,
+.kin--still.kin--playing .kin-bob {
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-system .kin,
+  .motion-system .kin *,
+  .motion-system .egg,
+  .motion-system .egg * {
+    animation: none !important;
+  }
+}
+
+/* ---- keyframes ---------------------------------------------------------- */
+@keyframes kin-breathe {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.012, 1.022);
+  }
+}
+@keyframes kin-blink {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+  93% {
+    transform: scaleY(0.08);
+  }
+  96% {
+    transform: scaleY(1);
+  }
+}
+@keyframes kin-wag {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(9deg);
+  }
+}
+@keyframes kin-twitch-l {
+  0%,
+  78%,
+  86%,
+  100% {
+    transform: rotate(0deg);
+  }
+  81% {
+    transform: rotate(-10deg);
+  }
+  83% {
+    transform: rotate(4deg);
+  }
+}
+@keyframes kin-twitch-r {
+  0%,
+  78%,
+  86%,
+  100% {
+    transform: rotate(0deg);
+  }
+  81% {
+    transform: rotate(10deg);
+  }
+  83% {
+    transform: rotate(-4deg);
+  }
+}
+@keyframes kin-flutter-l {
+  from {
+    transform: rotate(4deg) scale(1, 1);
+  }
+  to {
+    transform: rotate(-10deg) scale(0.86, 1);
+  }
+}
+@keyframes kin-flutter-r {
+  from {
+    transform: rotate(-4deg) scale(1, 1);
+  }
+  to {
+    transform: rotate(10deg) scale(0.86, 1);
+  }
+}
+@keyframes kin-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes kin-fin {
+  0%,
+  100% {
+    transform: rotate(-3deg) scale(1, 1);
+  }
+  50% {
+    transform: rotate(3deg) scale(1.04, 0.97);
+  }
+}
+@keyframes kin-arm-l {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes kin-arm-r {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-6deg);
+  }
+}
+@keyframes kin-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1.04, 0.96);
+  }
+  40% {
+    transform: translateY(-12px) scale(0.97, 1.04);
+  }
+  60% {
+    transform: translateY(-12px) scale(0.98, 1.03);
+  }
+}
+@keyframes kin-nod {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  50% {
+    transform: rotate(-4deg) translateY(3px);
+  }
+}
+@keyframes kin-chomp {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.25);
+  }
+}
+@keyframes kin-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1.08, 0.9) rotate(0deg);
+  }
+  15% {
+    transform: translateY(-4px) scale(0.94, 1.08) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-24px) scale(0.98, 1.03) rotate(5deg);
+  }
+  85% {
+    transform: translateY(-4px) scale(0.96, 1.05) rotate(-2deg);
+  }
+}
+@keyframes kin-shadow {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+}
+@keyframes kin-sleep {
+  0%,
+  100% {
+    transform: scale(1.02, 0.95);
+  }
+  50% {
+    transform: scale(1.035, 0.975);
+  }
+}
+@keyframes kin-wiggle {
+  0%,
+  100% {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+@keyframes kin-tilt {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(10deg);
+  }
+}
+@keyframes kin-walk {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(2deg);
+  }
+}
+@keyframes kin-float {
+  0% {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-22px);
+    opacity: 0;
+  }
+}
+@keyframes kin-z {
+  0% {
+    transform: translate(0, 4px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(6px, -16px);
+    opacity: 0;
+  }
+}
+@keyframes kin-crumb {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+@keyframes kin-bubble {
+  0% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+@keyframes kin-twinkle {
+  0%,
+  100% {
+    transform: scale(0.5);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+@keyframes kin-qbob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* ---- eggs --------------------------------------------------------------- */
+.egg-sway {
+  animation: egg-sway 3.4s ease-in-out infinite;
+}
+.egg--wobble .egg-sway {
+  animation: egg-wobble 0.5s ease-in-out infinite;
+}
+.egg--crack .egg-sway {
+  animation: egg-wobble 0.36s ease-in-out infinite;
+}
+.egg--open .egg-sway {
+  animation: none;
+}
+.egg-cap {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+.egg--open .egg-cap {
+  animation: egg-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.egg-crack-line {
+  stroke-dasharray: 160;
+  stroke-dashoffset: 160;
+}
+.egg--crack .egg-crack-line,
+.egg--open .egg-crack-line {
+  animation: egg-draw 0.8s ease-out forwards;
+}
+.egg--still .egg-crack-line {
+  stroke-dashoffset: 0;
+}
+.egg-sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.egg--open .egg-sparkle {
+  animation: kin-twinkle 1.2s ease-in-out infinite;
+}
+.egg-glint {
+  animation: egg-glint 3.2s ease-in-out infinite;
+}
+
+@keyframes egg-sway {
+  0%,
+  100% {
+    transform: rotate(-2.5deg);
+  }
+  50% {
+    transform: rotate(2.5deg);
+  }
+}
+@keyframes egg-wobble {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(7deg);
+  }
+}
+@keyframes egg-pop {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  60% {
+    transform: translate(-12px, -46px) rotate(-24deg);
+  }
+  100% {
+    transform: translate(-18px, -34px) rotate(-18deg);
+  }
+}
+@keyframes egg-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes egg-glint {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}

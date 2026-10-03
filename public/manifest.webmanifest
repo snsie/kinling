@@ -1,0 +1,11 @@
+{
+  "name": "Kinling",
+  "short_name": "Kinling",
+  "description": "A cozy creature companion with on-device AI.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7ead8",
+  "theme_color": "#f7ead8",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

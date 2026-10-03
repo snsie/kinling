@@ -1,0 +1,103 @@
+/* Kinling design tokens.
+   Warm, cozy palette with AA-contrast text, layered glass surfaces, a fluid
+   type scale and shared motion curves. Component styles live in app.css. */
+:root {
+  /* ---- Palette ---- */
+  --paper: #f6ead9;
+  --paper-2: #fdf6ec;
+  --card: #fffaf3;
+  --card-edge: #e8d6bd;
+  --ink: #3b2f2a;
+  --ink-soft: #6b5a4f;
+  --ink-faint: #8c7a6c;
+  --line: rgba(120, 82, 48, 0.14);
+  --line-strong: #a39079; /* 3:1 against white, for form-control edges */
+
+  --coral: #d9694f;
+  --coral-strong: #b84f37;
+  --coral-ink: #a8452f; /* coral for small text on tinted glass (AA) */
+  --coral-soft: #f7c9b8;
+  --coral-wash: #fdebe4;
+  --moss: #5d8a4a;
+  --moss-soft: #cfe3bf;
+  --moss-ink: #2f5521;
+  --sky: #4f8fbf;
+  --sky-soft: #cfe5f4;
+  --sky-text: #2b6188;
+  --gold: #e3a92f;
+  --gold-soft: #fbe7b4;
+  --gold-ink: #6b4a00;
+  --lilac: #8a6fc0;
+  --lilac-soft: #e6dcf6;
+  --danger: #b3412e;
+  --danger-soft: #f8d9d2;
+  --focus: #2f6fb0;
+
+  --meter-hunger: #e3893f;
+  --meter-energy: #e3b52f;
+  --meter-clean: #4f9fc6;
+  --meter-happy: #e0688a;
+
+  /* ---- Surfaces (glass) ---- */
+  --glass: rgba(255, 251, 245, 0.66);
+  --glass-strong: rgba(255, 252, 247, 0.84);
+  --glass-soft: rgba(255, 255, 255, 0.5);
+  --glass-tint: rgba(255, 255, 255, 0.72);
+  --glass-edge: rgba(255, 255, 255, 0.7);
+  --glass-blur: blur(20px) saturate(150%);
+  --glass-blur-sm: blur(10px) saturate(140%);
+  --well: rgba(246, 234, 217, 0.55);
+
+  /* ---- Depth ---- */
+  --hairline: 0 0 0 1px var(--line);
+  --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --shadow-1: 0 1px 2px rgba(74, 45, 20, 0.06), 0 2px 8px -3px rgba(74, 45, 20, 0.12);
+  --shadow-2: 0 1px 2px rgba(74, 45, 20, 0.05), 0 10px 28px -12px rgba(74, 45, 20, 0.26);
+  --shadow-3: 0 2px 6px rgba(74, 45, 20, 0.06), 0 28px 56px -20px rgba(74, 45, 20, 0.36);
+  --shadow: var(--shadow-2);
+  --glow-coral: 0 10px 26px -10px rgba(184, 79, 55, 0.6);
+  --glow-gold: 0 0 0 1px rgba(227, 169, 47, 0.35), 0 12px 36px -10px rgba(227, 169, 47, 0.55);
+
+  /* ---- Shape ---- */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* ---- Space (4px grid) ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --gutter: clamp(12px, 2.4vw, 28px);
+
+  /* ---- Type ---- */
+  --font: 'Nunito Variable', 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Fraunces Variable', 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: clamp(1.06rem, 1rem + 0.3vw, 1.2rem);
+  --fs-xl: clamp(1.3rem, 1.12rem + 0.8vw, 1.7rem);
+  --fs-2xl: clamp(1.7rem, 1.3rem + 1.7vw, 2.5rem);
+  --fs-3xl: clamp(2.1rem, 1.4rem + 3.2vw, 3.6rem);
+  --fs-display: clamp(2.6rem, 1.5rem + 5vw, 5.4rem);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --dur-4: 640ms;
+
+  /* Set at runtime from the sticky header's measured height. */
+  --header-h: 72px;
+}
