@@ -106,7 +106,7 @@ const FEATURES = [
   { icon: Icon.lock, title: 'Private by design', text: 'Saves stay in this browser, and the optional AI runs on your device.' },
 ];
 
-function WelcomeStep({ reducedMotion }: { reducedMotion: boolean }) {
+function WelcomeStep({ reducedMotion: _reducedMotion }: { reducedMotion: boolean }) {
   const [support, setSupport] = useState<{ supported: boolean; reason?: string } | null>(null);
   useEffect(() => {
     void ai.checkSupport().then(setSupport);
@@ -114,20 +114,26 @@ function WelcomeStep({ reducedMotion }: { reducedMotion: boolean }) {
   const next = () => go('egg');
   return (
     <div className="welcome">
-      <section className="ob-card hero" aria-labelledby="welcome-title">
-        <p className="eyebrow">A cozy creature companion</p>
-        <h1 id="welcome-title" tabIndex={-1}>
-          <Kinetic text="Welcome to Kinling" accent="Kinling" />
-        </h1>
-        <p className="lead">Hatch a little creature, care for it, explore the garden and pond together, and help it grow into whatever it wants to be.</p>
+      <section className="hero hero--layered" aria-labelledby="welcome-title">
+        <div className="hero__backdrop" aria-hidden="true">
+          <img
+            src="./images/welcome-hero.jpg"
+            alt=""
+            className="hero__img"
+            loading="eager"
+          />
+          <div className="hero__vignette" />
+        </div>
+        <div className="hero__content">
+          <span className="hero__badge">A cozy creature companion</span>
+          <h1 id="welcome-title" tabIndex={-1}>
+            <Kinetic text="Welcome to Kinling" accent="Kinling" />
+          </h1>
+          <p className="lead hero__lead">
+            Hatch a little creature, care for it, explore the garden and pond together, and help it grow into whatever it wants to be.
+          </p>
+        </div>
       </section>
-      <div className="ob-card hero-art" aria-hidden="true">
-        {EGG_TYPES.map((egg) => (
-          <span key={egg} className="hero-art__egg">
-            <Egg egg={egg} reducedMotion={reducedMotion} size="100%" />
-          </span>
-        ))}
-      </div>
       <ul className="features" aria-label="What you can do">
         {FEATURES.map((f) => (
           <li key={f.title} className="feature" data-reveal="">
@@ -210,8 +216,13 @@ function WelcomeStep({ reducedMotion }: { reducedMotion: boolean }) {
   );
 }
 
-function EggStep({ reducedMotion, current }: { reducedMotion: boolean; current: EggType | null }) {
-  const [hover, setHover] = useState<EggType | null>(null);
+const EGG_IMAGES: Record<EggType, string> = {
+  woodland: './images/egg-woodland.jpg',
+  aquatic: './images/egg-aquatic.jpg',
+  celestial: './images/egg-celestial.jpg',
+};
+
+function EggStep({ reducedMotion: _reducedMotion, current }: { reducedMotion: boolean; current: EggType | null }) {
   return (
     <section className="ob-card">
       <h1 tabIndex={-1}>
@@ -231,13 +242,9 @@ function EggStep({ reducedMotion, current }: { reducedMotion: boolean; current: 
                 playSfx('pop');
                 store.update((s) => chooseEgg(s, egg));
               }}
-              onMouseEnter={() => setHover(egg)}
-              onMouseLeave={() => setHover(null)}
-              onFocus={() => setHover(egg)}
-              onBlur={() => setHover(null)}
             >
-              <span className="egg-card__art">
-                <Egg egg={egg} state={hover === egg ? 'wobble' : 'idle'} reducedMotion={reducedMotion} size="100%" />
+              <span className="egg-card__banner" aria-hidden="true">
+                <img src={EGG_IMAGES[egg]} alt="" className="egg-card__img" loading="lazy" />
               </span>
               <strong>{def.name}</strong>
               <span>{def.description}</span>
