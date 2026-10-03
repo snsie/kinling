@@ -5,11 +5,15 @@ import type { RewardSummary } from '../../game/outcome';
 import { describeRequirement, getTrait } from '../../game/traits';
 import type { FoodId, MaterialId, RouteId, SaveData } from '../../game/types';
 import { ROUTE_IDS } from '../../game/types';
-import { ARENA_H, ARENA_W } from '../../minigame/arenas';
-import { ArenaBackdrop } from '../../render/ArenaArt';
 import { ItemIcon } from '../../render/ItemIcon';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
+
+const ROUTE_IMAGES: Record<RouteId, string> = {
+  'garden-path': './images/route-garden.jpg',
+  'pond-shallows': './images/route-pond.jpg',
+  'pond-deep': './images/route-reeds.jpg',
+};
 
 export function ExplorePanel({ save, onStart }: { save: SaveData; onStart: (route: RouteId) => void }) {
   const c = save.creature!;
@@ -30,9 +34,7 @@ export function ExplorePanel({ save, onStart }: { save: SaveData; onStart: (rout
           return (
             <article key={r} className={`route-card route-card--${def.location} ${avail.available ? '' : 'route-card--locked'}`} aria-labelledby={`route-${r}`} data-reveal="">
               <div className="route-card__art" aria-hidden="true">
-                <svg viewBox={`0 0 ${ARENA_W} ${ARENA_H}`} preserveAspectRatio="xMidYMid slice" focusable="false">
-                  <ArenaBackdrop route={r} reducedMotion />
-                </svg>
+                <img src={ROUTE_IMAGES[r]} alt="" className="route-card__img" loading="lazy" />
                 {!avail.available && <span className="route-card__lockmark">{Icon.lock(16)}</span>}
               </div>
               <div className="route-card__body">
