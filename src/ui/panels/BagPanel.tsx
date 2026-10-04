@@ -4,9 +4,10 @@ import { doCare } from '../../app/actions';
 import { FOODS, KEEPSAKES, MATERIALS } from '../../game/catalog';
 import { nextStageAt, lifeStageFor, STAGE_LABELS } from '../../game/stage';
 import { nextEggAt, totalBond } from '../../game/eggs';
+import { recentReflections } from '../../game/appraisal';
 import { describeFeelings } from '../../game/feelings';
 import { activeKinling, personalityWords } from '../../game/state';
-import type { FoodId, KeepsakeId, MaterialId, SaveData } from '../../game/types';
+import type { FoodId, KeepsakeId, MaterialId, PersonalityKey, SaveData } from '../../game/types';
 import { FOOD_IDS, KEEPSAKE_IDS, MATERIAL_IDS } from '../../game/types';
 import { ItemIcon } from '../../render/ItemIcon';
 import { Bar, formatTime } from '../common';
@@ -21,6 +22,16 @@ export function BagPanel({ save }: { save: SaveData }) {
   const pref = c.preferences;
   const feelings = describeFeelings(save, c.id);
   const nextEgg = nextEggAt(save);
+  const lately = recentReflections(c, Date.now(), 1)[0];
+  const sinceHatching = (key: PersonalityKey) => {
+    const d = Math.round(c.personality[key] - c.baseline[key]);
+    return d ? (
+      <small className="about__delta" title="Change since hatching">
+        {' '}
+        {d > 0 ? `+${d}` : `−${-d}`}
+      </small>
+    ) : null;
+  };
   return (
     <div className="panel bag">
       <h2 className="panel__title">
@@ -100,12 +111,17 @@ export function BagPanel({ save }: { save: SaveData }) {
             <span>Feelings:</span> {feelings.join('; ')}.
           </p>
         )}
+        {lately && (
+          <p className="about__feelings">
+            <span>Lately:</span> “{lately.text}”
+          </p>
+        )}
         <div className="about__grid">
-          <span>Curiosity</span>
+          <span>Curiosity{sinceHatching('curiosity')}</span>
           <Bar value={c.personality.curiosity} color="var(--sky)" label="Curiosity" />
-          <span>Confidence</span>
+          <span>Confidence{sinceHatching('confidence')}</span>
           <Bar value={c.personality.confidence} color="var(--coral)" label="Confidence" />
-          <span>Playfulness</span>
+          <span>Playfulness{sinceHatching('playfulness')}</span>
           <Bar value={c.personality.playfulness} color="var(--gold)" label="Playfulness" />
           <span>Woodland</span>
           <Bar value={c.affinities.woodland} color="var(--moss)" label="Woodland affinity" />

@@ -157,8 +157,11 @@ export type TraitId =
   | 'feature.fins'
   | 'feature.wings';
 
-/** Game-event kinds first; then memories of conversations with another kinling or the player. */
-export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference', 'kinling-chat', 'player-chat'] as const;
+/**
+ * Game-event kinds first; then memories of conversations with another kinling
+ * or the player; then reflections, where a kinling notices how it has changed.
+ */
+export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference', 'kinling-chat', 'player-chat', 'reflection'] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
 /**
@@ -177,6 +180,13 @@ export interface Memory {
   pinned: boolean;
   /** Never shown to another kinling. */
   private: boolean;
+  /** How the moment felt, −2 (hurt) … 2 (loved). */
+  valence: number;
+  /**
+   * How the moment nudges each personality trait (−2 … 2). Applied later, and
+   * within limits, when the kinling reflects on what it remembers.
+   */
+  influence: Personality;
 }
 
 /** Something the player explicitly told their kinlings. Stored apart from memories. */
@@ -200,6 +210,7 @@ export const EVENT_KINDS = [
   'stage',
   'diary',
   'egg',
+  'growth',
 ] as const;
 export type GameEventKind = (typeof EVENT_KINDS)[number];
 
@@ -292,6 +303,8 @@ export interface KinlingDaily {
   socialPersonality: Personality;
   /** Today's change in this kinling's feelings toward each partner id. */
   feelingDelta: Record<string, { warmth: number; trust: number }>;
+  /** Personality change from reflecting on memories today (capped separately). */
+  reflectPersonality: Personality;
 }
 
 /** A creature plus everything that belongs to it alone. */
@@ -305,6 +318,10 @@ export interface Kinling extends Creature {
   /** Recent care actions for diminishing returns: action -> timestamps (ms). */
   careLog: Record<CareAction, number[]>;
   socialDaily: KinlingDaily;
+  /** Newest player chat message already turned into a memory (or judged not worth one). */
+  appraisedThroughId: string | null;
+  /** Memories newer than this have not been reflected on yet. */
+  lastReflectionAt: number;
 }
 
 /** Feelings target either another kinling (by id) or the player. */
@@ -366,7 +383,7 @@ export interface Unlocks {
   owned: TraitId[];
 }
 
-export const SAVE_SCHEMA_VERSION = 4;
+export const SAVE_SCHEMA_VERSION = 5;
 
 export interface SaveData {
   schemaVersion: typeof SAVE_SCHEMA_VERSION;

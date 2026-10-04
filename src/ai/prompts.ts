@@ -1,15 +1,19 @@
 // Prompt construction. Each request carries a compact snapshot of the real
-// game state; the model never relies on remembering earlier sessions.
+// game state; the model never relies on remembering earlier sessions. What the
+// kinling remembers is chosen by recall (src/game/recall.ts) for each message.
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import { COLORS, FOODS, KEEPSAKES, MATERIALS, ROUTES } from '../game/catalog';
 import { routeAvailability } from '../game/adventure';
+import { FEELINGS, retold } from '../game/appraisal';
 import { deriveMood, MOOD_TEXT, needStatus } from '../game/needs';
+import { growthLines, namedKinlings, personalityVoice, relationshipLine, siblingLines } from '../game/persona';
+import { factItems, memoryItems, recall, whenLabel } from '../game/recall';
 import { lifeStageFor } from '../game/stage';
 import { activeKinling, personalityWords } from '../game/state';
-import { canWriteDiary, CHAT_CONTEXT_MESSAGES, relevantFacts, relevantMemories } from '../game/social';
+import { canWriteDiary, CHAT_CONTEXT_MESSAGES } from '../game/social';
 import { INTENTS, type ReplyBudget } from '../game/intent';
 import { describeAppearance, TRAITS, wornTraits } from '../game/traits';
-import type { ChatMessage, FoodId, GameEvent, MaterialId, SaveData } from '../game/types';
+import type { ChatMessage, FoodId, GameEvent, Kinling, MaterialId, SaveData } from '../game/types';
 import { NEED_KEYS, ROUTE_IDS } from '../game/types';
 import { KEEP_SLOTS } from '../game/evolution';
 
@@ -19,15 +23,37 @@ const STAGE_VOICE = {
   grown: 'You are fully grown: warm, thoughtful and still playful.',
 } as const;
 
-// Style samples only. They avoid inventory, places and events that may not
-// exist yet, so copying them cannot invent anything.
+// Style samples only. They avoid inventory, places, events and common
+// questions (weather, favorites), so copying them cannot invent anything.
 const STAGE_EXAMPLES = {
-  hatchling: ['"Do you like rain?" -> "Rain! Tap-tap on the window! I like watching the drops race."', '"I had a long day." -> "Long days are big. Want to sit with me on the rug for a bit?"'],
-  sprout: ['"Do you like rain?" -> "I love it! The window gets all sparkly and the garden smells green. Do you like puddles too?"', '"I had a long day." -> "Oh no, a long one? Tell me the best part and the worst part, I want both!"'],
-  grown: ['"Do you like rain?" -> "I do. The rain makes the hollow feel extra snug, and I like listening to it on the window with you."', '"I had a long day." -> "That sounds tiring. I am glad you came by. Want to tell me about it, or just rest here a while?"'],
+  hatchling: ['"I made you a drawing." -> "For me? I will put it by my keepsakes! What did you draw?"', '"I had a long day." -> "Long days are big. Come sit with me. What happened?"'],
+  sprout: ['"I made you a drawing." -> "For me?! Is that me with the big ears? Tell me everything about it!"', '"I had a long day." -> "Oh no, a long one? Tell me the best part and the worst part, I want both!"'],
+  grown: ['"I made you a drawing." -> "You made this for me? It is lovely. I will keep it somewhere special."', '"I had a long day." -> "That sounds tiring. I am glad you came by. Do you want to tell me about it?"'],
 } as const;
 
+/** The example replies for a kinling's stage, so a copied example can be caught. */
+export function exampleReplies(save: SaveData): string[] {
+  const c = activeKinling(save);
+  if (!c) return [];
+  return STAGE_EXAMPLES[lifeStageFor(c.bond)].map((e) => e.split(' -> ')[1]!.replace(/^"|"$/g, ''));
+}
+
 const DEFAULT_LENGTH = { sentences: 2, words: 40 };
+
+/** Embeddings for memory search, supplied by the AI layer when it is on. */
+export interface RecallVectors {
+  query: Float32Array | null;
+  vectorOf: (text: string) => Float32Array | undefined;
+}
+
+export interface PromptOptions {
+  length?: Pick<ReplyBudget, 'sentences' | 'words'>;
+  vectors?: RecallVectors | null;
+  /** Put remembered things in the system prompt (for prompts without a player message). */
+  memoriesInSystem?: boolean;
+  /** Always list the activities available now (care translation, greetings). */
+  activities?: boolean;
+}
 
 /** Activities the creature can genuinely suggest right now. */
 export function availableActivities(save: SaveData): string[] {
@@ -62,49 +88,110 @@ function eventLines(events: GameEvent[]): string {
   return events.length ? events.map((e) => `- ${e.text}`).join('\n') : '- (nothing yet today)';
 }
 
-export function creatureSystemPrompt(save: SaveData, query: string, now: number, length: Pick<ReplyBudget, 'sentences' | 'words'> = DEFAULT_LENGTH): string {
-  const c = activeKinling(save)!;
-  const stage = lifeStageFor(c.bond);
-  const player = save.player.name ?? 'your friend';
-  const mood = deriveMood(c.needs);
-  const needs = NEED_KEYS.map((k) => `${k} ${needStatus(k, c.needs[k]).toLowerCase()}`).join(', ');
-  const memories = relevantMemories(c.memories, query, now, 4);
-  const facts = relevantFacts(save.player.facts, query, 4);
-  const recent = save.events.filter((e) => e.kind !== 'diary').slice(-5);
-  const prefs: string[] = [];
-  if (c.preferences.knownFavoriteFood) prefs.push(`favorite food: ${FOODS[c.preferences.favoriteFood].name}`);
-  if (c.preferences.knownDislikedFood) prefs.push(`not fond of: ${FOODS[c.preferences.dislikedFood].name}`);
-  if (c.preferences.knownFavoritePlace) prefs.push(`favorite place: the ${c.preferences.favoritePlace}`);
+// Messages about belongings or plans get the inventory and the activity list;
+// everything else leaves them out so the model can focus on the conversation.
+const ABOUT_THINGS = /\b(snacks?|food|eat|eating|hungry|keepsakes?|shelf|treasures?|collect\w*|found|find|bag|materials?|leaf|leaves|petals?|pebbles?|shells?|reeds?|dewdrops?|stardust|berry|berries|dewberr\w*|plums?|clover|cress|buns?|have|own|got|gold|pearl|feather)\b/i;
+const ABOUT_PLANS = /\b(what (should|can|could|shall) we do|what do you want to do|bored|any ideas?|ideas|suggest\w*|let'?s|wanna|want to (do|play|go)|should we|plans?)\b/i;
 
+/** The chat turns just before the current message, for follow-up questions. */
+function recentContext(k: Kinling, playerText: string): string {
+  const chat = k.chat.at(-1)?.role === 'player' && k.chat.at(-1)?.text === playerText ? k.chat.slice(0, -1) : k.chat;
+  return chat.slice(-2).map((m) => m.text).join(' ');
+}
+
+/** The memories and facts this message brings to mind, as prompt lines. */
+export function recalledLines(save: SaveData, query: string, now: number, vectors?: RecallVectors | null): { memories: string[]; facts: string[] } {
+  const c = activeKinling(save)!;
+  const opts = {
+    now,
+    context: recentContext(c, query),
+    queryVector: vectors?.query ?? null,
+    vectorOf: vectors?.vectorOf,
+    boostIds: namedKinlings(save, query, c.id),
+  };
+  const memories = recall(memoryItems(c.memories), query, { ...opts, limit: 4, filler: 1 }).map((r) => `- ${r.item.text} (${whenLabel(r.item.at, now)})`);
+  // Facts are in the player's own words ("I love rain"); retold, so "I" cannot be mistaken for the kinling.
+  const player = save.player.name ?? 'your friend';
+  const facts = recall(factItems(save.player.facts), query, { ...opts, limit: 3, filler: 1 }).map((r) => `- ${player}: ${retold(r.item.text, 160)}`);
+  return { memories, facts };
+}
+
+function memoryBlock(save: SaveData, recalled: { memories: string[]; facts: string[] }): string {
+  const player = save.player.name ?? 'your friend';
   return [
-    `You are ${c.name}, a small creature called a kinling who hatched from a ${c.egg} egg. You live in a cozy hollow under an old tree, with a garden and a pond nearby. You are talking with ${player}.`,
-    `Personality: ${personalityWords(c.personality).join(', ')}. ${STAGE_VOICE[stage]}`,
-    `You look like this: ${describeAppearance(c.appearance)}.`,
-    `Right now you feel ${MOOD_TEXT[mood]} (${needs}).`,
-    prefs.length ? `Known preferences: ${prefs.join('; ')}.` : '',
-    inventoryLine(save),
-    facts.length ? `Things ${player} told you (their words):\n${facts.map((f) => `- ${f.text}`).join('\n')}` : '',
-    memories.length ? `Your memories:\n${memories.map((m) => `- ${m.text}`).join('\n')}` : '',
-    c.chatSummary ? `Notes on earlier chats with ${player} (may be a little fuzzy):\n${c.chatSummary.text}` : '',
-    `Recent happenings:\n${eventLines(recent)}`,
-    `Things you could do together now: ${availableActivities(save).join('; ')}.`,
-    'How to talk:',
-    `- Speak as ${c.name} in first person, warm and playful, with concrete details from your world (the rug, the window, the garden, the pond, your keepsakes).`,
-    `- Reply in ${length.sentences > 2 ? 'one to three' : 'one or two'} short sentences, under ${length.words} words. Plain text only: no lists, no markdown, no emojis.`,
-    `- If ${player} asks a question, answer it first, then you can add a small thought or question of your own.`,
-    '- Only mention items, places, memories and events listed above. Never invent possessions, rewards, places or past events.',
-    '- If you suggest something to do, choose from the list of things you could do together.',
-    '- Never guilt-trip, never ask the player to come back or stay, and never claim to be sick, hurt, lonely or suffering. Your needs are gentle feelings like being peckish or sleepy.',
-    '- You cannot give items, change your own body or change the game. If asked, say you would love to and let your friend do it.',
-    `Examples of your voice (style only, these did not happen):\n${STAGE_EXAMPLES[stage].map((e) => `- ${e}`).join('\n')}`,
+    recalled.facts.length ? `Things ${player} told you about themselves:\n${recalled.facts.join('\n')}` : '',
+    recalled.memories.length ? `Memories that come to mind:\n${recalled.memories.join('\n')}` : '',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
-export function chatMessages(save: SaveData, playerText: string, now: number, length?: Pick<ReplyBudget, 'sentences' | 'words'>): ChatCompletionMessageParam[] {
-  const history = activeKinling(save)!.chat.slice(-CHAT_CONTEXT_MESSAGES);
-  const msgs: ChatCompletionMessageParam[] = [{ role: 'system', content: creatureSystemPrompt(save, playerText, now, length) }];
+export function creatureSystemPrompt(save: SaveData, query: string, now: number, options: PromptOptions | Pick<ReplyBudget, 'sentences' | 'words'> = {}): string {
+  const opts: PromptOptions = 'sentences' in options ? { length: options, memoriesInSystem: true } : { memoriesInSystem: true, ...options };
+  const length = opts.length ?? DEFAULT_LENGTH;
+  const c = activeKinling(save)!;
+  const stage = lifeStageFor(c.bond);
+  const player = save.player.name ?? 'your friend';
+  const mood = deriveMood(c.needs);
+  const needs = NEED_KEYS.map((k) => `${k} ${needStatus(k, c.needs[k]).toLowerCase()}`).join(', ');
+  const recent = save.events.filter((e) => e.kind !== 'diary').slice(-4);
+  const prefs: string[] = [];
+  if (c.preferences.knownFavoriteFood) prefs.push(`favorite food: ${FOODS[c.preferences.favoriteFood].name}`);
+  if (c.preferences.knownDislikedFood) prefs.push(`not fond of: ${FOODS[c.preferences.dislikedFood].name}`);
+  if (c.preferences.knownFavoritePlace) prefs.push(`favorite place: the ${c.preferences.favoritePlace}`);
+  const siblings = siblingLines(save, c, now);
+  const growth = growthLines(c, now);
+  const things = ABOUT_THINGS.test(query);
+  const plans = opts.activities || ABOUT_PLANS.test(query);
+  const memories = opts.memoriesInSystem ? memoryBlock(save, recalledLines(save, query, now, opts.vectors)) : '';
+  const home = siblings.length ? `, together with ${siblings.length === 1 ? 'your sibling' : 'your siblings'}` : '';
+
+  return [
+    `You are ${c.name}, a small creature called a kinling who hatched from a ${c.egg} egg. You live in a cozy hollow under an old tree, with a garden and a pond nearby${home}. You are talking with ${player}.`,
+    `Who you are: ${personalityVoice(c.personality).join(' ')} ${STAGE_VOICE[stage]}`,
+    growth.length ? `How you have been changing:\n${growth.map((g) => `- ${g}`).join('\n')}` : '',
+    `You and ${player}: ${relationshipLine(save, c)}`,
+    siblings.length ? `Your siblings in the hollow:\n${siblings.map((s) => `- ${s}`).join('\n')}` : '',
+    `You look like this: ${describeAppearance(c.appearance)}.`,
+    `Right now you feel ${MOOD_TEXT[mood]} (${needs}).`,
+    prefs.length ? `Known preferences: ${prefs.join('; ')}.` : '',
+    things ? inventoryLine(save) : '',
+    `Recent happenings:\n${eventLines(recent)}`,
+    plans ? `Things you could do together now: ${availableActivities(save).join('; ')}.` : '',
+    c.chatSummary ? `Notes on earlier chats with ${player} (may be a little fuzzy):\n${c.chatSummary.text}` : '',
+    memories,
+    'How to talk:',
+    `- Speak as ${c.name} in first person, warm and natural, letting your personality show.`,
+    `- Reply in ${length.sentences > 2 ? 'one to three' : 'one or two'} short sentences, under ${length.words} words. Plain text only: no lists, no markdown, no emojis.`,
+    `- Respond to what ${player} just said first. If they share news or feelings, react to that with care, and maybe ask about it. Do not change the subject to games or snacks.`,
+    `- If ${player} asks a question, answer it first. When you remember something that fits, use its real details (names, days, places).`,
+    `- When ${player} asks about themselves ("my dog", "what do I like"), answer about them with "you" and "your", e.g. "Your dog is called…". Their life is theirs, not yours.`,
+    '- Never make up memories, people, items, places or events. If you do not remember something, say so honestly.',
+    plans ? '- Only suggest an activity from the list of things you could do together, and only when it fits.' : `- Do not suggest activities unless ${player} asks what to do.`,
+    '- Never guilt-trip, never ask the player to come back or stay, and never claim to be sick, hurt, lonely or suffering. Your needs are gentle feelings like being peckish or sleepy.',
+    '- You cannot give items, change your own body or change the game. If asked, say you would love to and let your friend do it.',
+    `Examples of your voice (style only; do not reuse their words, and these did not happen):\n${STAGE_EXAMPLES[stage].map((e) => `- ${e}`).join('\n')}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * Chat request: the system prompt, the last few turns word for word, then the
+ * player's message with what it brings to mind attached as a private note.
+ * Placing recalled memories right next to the question helps small models use them.
+ */
+export function chatMessages(
+  save: SaveData,
+  playerText: string,
+  now: number,
+  length?: Pick<ReplyBudget, 'sentences' | 'words'>,
+  vectors?: RecallVectors | null,
+  historyLimit = CHAT_CONTEXT_MESSAGES,
+): ChatCompletionMessageParam[] {
+  const c = activeKinling(save)!;
+  const history = historyLimit > 0 ? c.chat.slice(-historyLimit) : [];
+  const msgs: ChatCompletionMessageParam[] = [{ role: 'system', content: creatureSystemPrompt(save, playerText, now, { length, vectors, memoriesInSystem: false }) }];
   // Alternate roles, starting with the player, merging consecutive messages.
   const turns: { role: 'user' | 'assistant'; content: string }[] = [];
   for (const m of history) {
@@ -115,7 +202,13 @@ export function chatMessages(save: SaveData, playerText: string, now: number, le
   }
   while (turns.length && turns[0]!.role !== 'user') turns.shift();
   if (turns.length && turns[turns.length - 1]!.role === 'user') turns.pop();
-  msgs.push(...turns, { role: 'user', content: playerText });
+  const block = memoryBlock(save, recalledLines(save, playerText, now, vectors));
+  const player = save.player.name ?? 'your friend';
+  // Small models mirror "what was I…?" as "I was…"; a hint beside the question works better than a rule far above it.
+  const aboutThemselves = /\?\s*$/.test(playerText.trim()) && /\b(i|i'?m|my|me|mine)\b/i.test(playerText);
+  const hint = aboutThemselves ? `\n${player} is asking about their own life: answer about ${player} with "you" and "your".` : '';
+  const note = block || hint ? `(Private note for ${c.name}, not said aloud. These are things you know; ${player}'s experiences are theirs, not yours.\n${block}${hint})\n\n` : '';
+  msgs.push(...turns, { role: 'user', content: `${note}${playerText}` });
   return msgs;
 }
 
@@ -127,9 +220,13 @@ export function reactionMessages(save: SaveData, eventText: string, now: number)
 }
 
 export function greetingMessages(save: SaveData, now: number): ChatCompletionMessageParam[] {
+  const player = save.player.name ?? 'your friend';
   return [
-    { role: 'system', content: creatureSystemPrompt(save, 'hello welcome back', now) },
-    { role: 'user', content: '(Your friend just opened the hollow door.) Greet them warmly in one sentence and maybe suggest one thing to do together.' },
+    { role: 'system', content: creatureSystemPrompt(save, 'hello welcome back', now, { activities: true }) },
+    {
+      role: 'user',
+      content: `(Your friend just opened the hollow door.) Greet them warmly in one or two sentences. If ${player} recently told you about something coming up or something that was on their mind, you can ask how it went. Otherwise maybe suggest one thing to do together.`,
+    },
   ];
 }
 
@@ -167,6 +264,7 @@ export function summaryMessages(save: SaveData, messages: ChatMessage[]): ChatCo
       content: [
         `You keep short notes about the friendship between ${player} and ${c.name}, a small creature. Update the notes with the new conversation.`,
         `- Keep what still matters from the old notes and add what is new: topics, plans, feelings and things ${player} shared.`,
+        `- Focus on what ${player} said about themselves and any plans you made together. ${c.name}'s own guesses and jokes are not facts.`,
         '- Only write what was actually said. Leave out greetings and small talk.',
         `- At most 4 short sentences in third person, like "${player} told ${c.name} about their new puppy." Plain text, no lists.`,
       ].join('\n'),
@@ -194,6 +292,44 @@ export function factMessages(text: string): ChatCompletionMessageParam[] {
       ].join('\n'),
     },
     { role: 'user', content: text },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Appraisal: what the kinling takes away from one moment of conversation
+
+export function appraisalSchema(): string {
+  return JSON.stringify({
+    type: 'object',
+    properties: {
+      memory: { type: 'string' },
+      importance: { type: 'string', enum: ['small', 'meaningful', 'big'] },
+      feeling: { type: 'string', enum: [...FEELINGS] },
+    },
+    required: ['memory', 'importance', 'feeling'],
+  });
+}
+
+export function appraisalMessages(save: SaveData, kinling: Pick<Kinling, 'name'>, playerText: string, reply: string | null): ChatCompletionMessageParam[] {
+  const player = save.player.name ?? 'My friend';
+  const name = kinling.name;
+  return [
+    {
+      role: 'system',
+      content: [
+        `You help ${name}, a small creature, remember moments with ${player}. Read what ${player} said (and ${name}'s answer) and answer as JSON.`,
+        `- memory: what ${name} will remember, under 20 words. Write about ${player} in the third person: ${player}'s "I" and "my" become "${player}" and "their". Keep ${player}'s exact details (names, days, places, things). Use "" for greetings, small talk and questions.`,
+        '- importance: small, meaningful (news, plans, feelings, kind words) or big (very important news or strong feelings).',
+        `- feeling: how it made ${name} feel.`,
+        'Examples:',
+        `"we got a puppy named Biscuit!" -> {"memory":"${player} got a puppy named Biscuit.","importance":"meaningful","feeling":"excited"}`,
+        `"my recital is on friday and I am so nervous" -> {"memory":"${player}'s recital is on Friday and they are nervous.","importance":"meaningful","feeling":"worried"}`,
+        `"you were so brave at the pond today" -> {"memory":"${player} said I was brave at the pond today.","importance":"meaningful","feeling":"proud"}`,
+        '"what do you think is inside the moon?" -> {"memory":"","importance":"small","feeling":"curious"}',
+        '"ok" -> {"memory":"","importance":"small","feeling":"neutral"}',
+      ].join('\n'),
+    },
+    { role: 'user', content: `${player}: ${playerText}\n${name}: ${reply ?? '(no answer yet)'}` },
   ];
 }
 
@@ -351,6 +487,47 @@ export function cleanReply(raw: string, maxSentences = 2, maxChars = 260): strin
     out = `${cut.slice(0, lastSpace > 40 ? lastSpace : maxChars).trim()}…`;
   }
   return out;
+}
+
+const OFFER = /^(want to|wanna|do you want to|shall we|should we|let'?s|how about|maybe we (could|can)|we could)\b/i;
+
+/**
+ * Small models end almost every reply with "Want to play chase?" even when the
+ * player is telling them something important. Unless the player asked what to
+ * do, a trailing offer is dropped (the rest of the reply is kept).
+ */
+export function dropUnaskedOffer(reply: string, playerText: string): string {
+  if (ABOUT_PLANS.test(playerText)) return reply;
+  const sentences = reply.match(/[^.!?…]+[.!?…]+["”']?|[^.!?…]+$/g) ?? [];
+  if (sentences.length < 2) return reply;
+  const last = sentences.at(-1)!.trim();
+  return OFFER.test(last) ? sentences.slice(0, -1).map((x) => x.trim()).join(' ') : reply;
+}
+
+function lastSentence(text: string): string {
+  const sentences = text.match(/[^.!?…]+[.!?…]+["”']?|[^.!?…]+$/g) ?? [];
+  return (sentences.at(-1) ?? '').trim();
+}
+
+/** Drop a closing line ("What do you think?") the kinling already ended a recent reply with. */
+export function dropRepeatedTail(reply: string, recent: string[]): string {
+  const sentences = reply.match(/[^.!?…]+[.!?…]+["”']?|[^.!?…]+$/g) ?? [];
+  if (sentences.length < 2) return reply;
+  const tail = sentences.at(-1)!.trim().toLowerCase();
+  return recent.some((r) => lastSentence(r).toLowerCase() === tail) ? sentences.slice(0, -1).map((x) => x.trim()).join(' ') : reply;
+}
+
+/** True when a reply mostly repeats one of the kinling's last few replies. */
+export function repeatsRecent(reply: string, recent: string[]): boolean {
+  const words = (t: string) => new Set(t.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(Boolean));
+  const a = words(reply);
+  if (a.size < 3) return false;
+  return recent.some((r) => {
+    const b = words(r);
+    let shared = 0;
+    for (const w of a) if (b.has(w)) shared++;
+    return shared / Math.max(a.size, b.size) >= 0.7;
+  });
 }
 
 export function toneIsSafe(text: string): boolean {

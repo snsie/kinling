@@ -2,6 +2,7 @@
 // player has agreed to the download and the files are already cached;
 // otherwise waits for an explicit choice. Never downloads silently.
 import { useSyncExternalStore } from 'react';
+import { embedder, type EmbedStatus } from '../ai/embedder';
 import { ai, type AiStatus } from '../ai/engine';
 import type { ModelId } from '../game/types';
 import { store } from './store';
@@ -15,7 +16,24 @@ export function useAiStatus(): AiStatus {
   );
 }
 
+export function useEmbedStatus(): EmbedStatus {
+  return useSyncExternalStore(
+    (l) => embedder.subscribe(l),
+    () => embedder.getStatus(),
+    () => embedder.getStatus(),
+  );
+}
+
 let started = false;
+
+/** Load memory search if the player turned it on and its files are still here. */
+async function startMemorySearch(): Promise<void> {
+  const s = store.save?.settings.ai;
+  if (!s?.enabled || !s.memorySearch) return;
+  if (!(await ai.checkSupport()).supported) return;
+  if (await embedder.isCached()) void embedder.load();
+  else embedder.unload('The memory search files are no longer stored in this browser. Turn it off and on again to download them.');
+}
 
 /** Called once after the save loads. */
 export async function startAiFromSettings(): Promise<void> {
@@ -26,6 +44,7 @@ export async function startAiFromSettings(): Promise<void> {
     ai.disable();
     return;
   }
+  void startMemorySearch();
   if (!s.downloadConsent) {
     await ai.refreshIdle(s.modelId);
     return;
@@ -50,6 +69,7 @@ export function enableAndLoad(modelId: ModelId): void {
   });
   started = true;
   void ai.load(modelId);
+  if (store.save?.settings.ai.memorySearch) void embedder.load();
 }
 
 export function switchModel(modelId: ModelId): void {
@@ -66,6 +86,16 @@ export function disableAi(): void {
     st.ai.enabled = false;
   });
   ai.disable();
+  embedder.unload();
+}
+
+/** Player turned memory search on (agreeing to its download) or off. */
+export function setMemorySearch(on: boolean): void {
+  updateSettings((st) => {
+    st.ai.memorySearch = on;
+  });
+  if (on) void embedder.load();
+  else embedder.unload();
 }
 
 export function cancelDownload(): void {

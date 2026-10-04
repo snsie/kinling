@@ -197,6 +197,20 @@ await step('chat replies with authored dialogue when AI is off; facts and care p
   return `${n} messages | axe violations: ${v}`;
 });
 
+await step('chat is remembered automatically, without a button', async () => {
+  await page.getByRole('tab', { name: /Talk/ }).click();
+  await page.getByLabel('Message Mochi').fill('we just got a puppy named Biscuit');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await page.locator('.msg--creature').last().waitFor();
+  await page.getByRole('tab', { name: /Diary/ }).click();
+  const memory = page.locator('.memory-list .memory__text', { hasText: 'Biscuit' }).first();
+  await memory.waitFor();
+  const text = (await memory.textContent()).trim();
+  await page.getByRole('tab', { name: /Talk/ }).click();
+  expect((await page.getByRole('button', { name: 'Remember this' }).count()) === 0, 'a "Remember this" button was shown');
+  return text;
+});
+
 await step('chat → Evolve hand-off previews without applying', async () => {
   await page.getByRole('button', { name: 'Preview in Evolve' }).click();
   await page.getByRole('heading', { name: 'Evolve' }).waitFor();
@@ -319,7 +333,7 @@ await step('export backup produces a validated JSON file', async () => {
   const path = await download.path();
   exported = JSON.parse(readFileSync(path, 'utf8'));
   expect(exported.format === 'kinling-save', 'format tag');
-  expect(exported.save.schemaVersion === 4, 'schema version');
+  expect(exported.save.schemaVersion === 5, 'schema version');
   expect(exported.save.kinlings[0].name === 'Mochi', 'kinling name');
   writeFileSync(join(OUT, 'exported-save.json'), JSON.stringify(exported, null, 2));
   return `${download.suggestedFilename()} (${JSON.stringify(exported).length} bytes)`;
@@ -409,7 +423,9 @@ await step('four kinlings: import, then pick one from the list to care for', asy
   const names = (await picker.getByRole('button').allTextContents()).map((t) => t.trim());
   expect(names.join(',') === 'Mochi,Pip,Fig,Luma', `picker shows ${names}`);
   await picker.getByRole('button', { name: 'Pip' }).click();
-  expect((await picker.getByRole('button', { name: 'Pip' }).getAttribute('aria-pressed')) === 'true', 'Pip not selected');
+  // The selection re-renders the picker; wait for it rather than reading the attribute straight away.
+  const selected = await picker.locator('button[aria-pressed="true"]', { hasText: 'Pip' }).waitFor({ timeout: 5000 }).then(() => true, () => false);
+  expect(selected, 'Pip not selected');
   await page.getByRole('tab', { name: /Talk/ }).click();
   await page.getByRole('heading', { name: 'Talk with Pip' }).waitFor();
   const cleanBefore = Number(await page.locator('.needs [role=meter]').nth(2).getAttribute('aria-valuenow'));

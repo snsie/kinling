@@ -30,9 +30,9 @@ export function legacyV3(save: SaveData): Record<string, unknown> {
   let extra: Record<string, unknown> = { memories: [], chat: [], chatSummary: null, appearanceHistory: [] };
   let daily: Record<string, unknown> = { day: '2026-03-01', personalityDelta: { curiosity: 0, confidence: 0, playfulness: 0 }, careLog: { feed: [], groom: [], rest: [], play: [] }, chatBond: 0 };
   if (k) {
-    const { baseline: _b, memories, chat, chatSummary, appearanceHistory, careLog, socialDaily, ...c } = k;
+    const { baseline: _b, memories, chat, chatSummary, appearanceHistory, careLog, socialDaily, appraisedThroughId: _ap, lastReflectionAt: _lr, ...c } = k;
     creature = c;
-    extra = { memories: memories.map(({ withIds: _w, private: _p, ...m }) => m), chat, chatSummary, appearanceHistory };
+    extra = { memories: memories.map(({ withIds: _w, private: _p, valence: _v, influence: _i, ...m }) => m), chat, chatSummary, appearanceHistory };
     daily = { ...socialDaily, careLog };
   }
   return {

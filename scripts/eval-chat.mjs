@@ -21,7 +21,8 @@ mkdirSync(OUT, { recursive: true });
 
 const ctx = await chromium.launchPersistentContext(join(OUT, 'profile'), {
   headless: process.env.HEADLESS === '1',
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=native', '--use-angle=vulkan', '--ignore-gpu-blocklist'],
+  // Vulkan is how Chromium reaches the GPU on headless Linux; on Windows and macOS the defaults work.
+  args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', ...(process.platform === 'linux' ? ['--enable-features=Vulkan', '--use-vulkan=native', '--use-angle=vulkan'] : [])],
 });
 const page = ctx.pages()[0] ?? (await ctx.newPage());
 const logs = [];

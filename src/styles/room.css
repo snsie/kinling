@@ -232,3 +232,14 @@
 .about__feelings span {
   font-weight: 800;
 }
+.about__delta {
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+.memory--reflection {
+  border-color: rgba(150, 120, 200, 0.35);
+  background: rgba(244, 238, 255, 0.9);
+}
+.memory-search {
+  margin-top: 12px;
+}

@@ -52,6 +52,7 @@ export const AppearanceSchema = z.object({
 });
 
 const PersonalitySchema = z.object({ curiosity: percent, confidence: percent, playfulness: percent });
+const nudge = z.number().int().min(-2).max(2);
 
 const CreatureSchema = z.object({
   id,
@@ -83,6 +84,8 @@ const MemorySchema = z.object({
   importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   pinned: z.boolean(),
   private: z.boolean(),
+  valence: nudge,
+  influence: z.object({ curiosity: nudge, confidence: nudge, playfulness: nudge }),
 });
 
 const careLog = z.array(time).max(20);
@@ -109,7 +112,10 @@ const KinlingSchema = CreatureSchema.extend({
     chatBond: z.number().finite().min(0).max(100),
     socialPersonality: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
     feelingDelta: z.record(id, z.object({ warmth: z.number().finite().min(-100).max(100), trust: z.number().finite().min(-100).max(100) })).refine((r) => Object.keys(r).length <= LIMITS.kinlings, { message: 'Too many entries' }),
+    reflectPersonality: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
   }),
+  appraisedThroughId: id.nullable(),
+  lastReflectionAt: time,
 });
 
 const feelingValue = z.number().finite().min(-30).max(100);

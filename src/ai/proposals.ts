@@ -2,6 +2,7 @@
 // it is length-limited, parsed defensively and validated with Zod. Unknown
 // ids are dropped here; the game rules then validate unlocks and costs.
 import { z } from 'zod';
+import { FEELINGS, type ModelAppraisal } from '../game/appraisal';
 import type { EvolutionRequest, KeepSlot } from '../game/evolution';
 import { KEEP_SLOTS } from '../game/evolution';
 import type { ProposedAction } from '../game/careProposals';
@@ -124,6 +125,20 @@ export function parseFactProposal(raw: string): string | null {
   if (!parsed.success) return null;
   const fact = sanitizeText(parsed.data.fact.replace(/^["“'\s]+|["”'\s.!]+$/g, ''), LIMITS.factLength);
   return fact.length >= 3 ? fact : null;
+}
+
+const AppraisalSchema = z.object({
+  memory: z.string().max(400).optional().default(''),
+  importance: z.enum(['small', 'meaningful', 'big']).catch('small'),
+  feeling: z.enum(FEELINGS).catch('neutral'),
+});
+
+/** A proposed memory of one moment, cleaned. Null when the output is unusable. */
+export function parseAppraisal(raw: string): ModelAppraisal | null {
+  const parsed = AppraisalSchema.safeParse(extractJson(raw));
+  if (!parsed.success) return null;
+  const memory = sanitizeText(cleanReply(parsed.data.memory, 2, 200).replace(/^["“'\s]+|["”'\s]+$/g, ''), 200);
+  return { ...parsed.data, memory };
 }
 
 /**

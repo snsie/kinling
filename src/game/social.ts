@@ -2,7 +2,11 @@
 import { addBond } from './progress';
 import { activeKinling, draft, ensureDaily, kinlingById, LIMITS, recordEvent } from './state';
 import type { ChatMessage, ChatRole, DiaryEntry, GameEvent, Kinling, Memory, PlayerFact, SaveData } from './types';
+import { recall } from './recall';
 import { uid } from './util';
+import { keywords } from './words';
+
+export { expandKeywords, keywords } from './words';
 
 /** Strip control characters and markup-ish brackets; collapse whitespace; cap length. */
 export function sanitizeText(raw: string, max: number): string {
@@ -76,87 +80,13 @@ export function forgetMemory(save: SaveData, id: string): SaveData {
   return s;
 }
 
-const STOPWORDS = new Set(
-  'the and you your are was were for with that this have has had what when where how why who did does can could would should will just like about into from they them then than there their our out its not but all any been being some very really much more most also too yes yeah okay ok hey hello'.split(' '),
-);
-
-export function keywords(text: string): string[] {
-  return [
-    ...new Set(
-      text
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
-        .split(/\s+/)
-        .filter((w) => w.length >= 3 && !STOPWORDS.has(w)),
-    ),
-  ];
-}
-
-// Small concept groups so "what's my favorite weather?" can find "I love
-// rainy days". Sharing a concept counts for less than sharing a word.
-const CONCEPTS: Record<string, string[]> = {
-  weather: ['weather', 'rain', 'rainy', 'raining', 'sun', 'sunny', 'sunshine', 'snow', 'snowy', 'cloud', 'cloudy', 'storm', 'windy', 'cold', 'warm', 'hot'],
-  food: ['food', 'eat', 'eating', 'snack', 'snacks', 'hungry', 'meal', 'dinner', 'lunch', 'breakfast', 'cook', 'cooking', 'bake', 'baking', 'cake', 'pizza', 'berry', 'dewberry', 'plum', 'bun'],
-  color: ['color', 'colour', 'colors', 'red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'black', 'white', 'brown', 'gold'],
-  pet: ['pet', 'pets', 'dog', 'dogs', 'puppy', 'cat', 'cats', 'kitten', 'bird', 'hamster', 'rabbit', 'bunny', 'turtle'],
-  family: ['family', 'mom', 'mum', 'mother', 'dad', 'father', 'sister', 'brother', 'grandma', 'grandpa', 'grandmother', 'grandfather', 'parents', 'aunt', 'uncle', 'cousin', 'baby'],
-  friend: ['friend', 'friends', 'friendship', 'buddy', 'pal'],
-  school: ['school', 'class', 'teacher', 'homework', 'test', 'exam', 'lesson', 'study', 'work', 'job', 'office'],
-  music: ['music', 'song', 'songs', 'sing', 'singing', 'dance', 'dancing', 'piano', 'guitar'],
-  water: ['pond', 'water', 'swim', 'swimming', 'lake', 'river', 'sea', 'ocean', 'beach', 'fish', 'frog', 'frogs', 'lily', 'reeds', 'shallows', 'shell', 'pearl'],
-  garden: ['garden', 'flower', 'flowers', 'bee', 'bees', 'plant', 'plants', 'clover', 'leaf', 'leaves', 'petal', 'petals', 'tree', 'acorn', 'ladybug'],
-  sky: ['sky', 'star', 'stars', 'moon', 'night', 'stardust', 'starlit', 'space'],
-  sleep: ['sleep', 'sleepy', 'nap', 'naps', 'tired', 'bed', 'bedtime', 'dream', 'dreams', 'rest'],
-  play: ['play', 'playing', 'game', 'games', 'chase', 'fun', 'toy', 'toys', 'adventure', 'explore'],
-  celebration: ['birthday', 'party', 'present', 'gift', 'holiday', 'celebrate', 'festival'],
-};
-const WORD_CONCEPTS = new Map<string, string[]>();
-for (const [concept, words] of Object.entries(CONCEPTS)) {
-  for (const w of words) WORD_CONCEPTS.set(w, [...(WORD_CONCEPTS.get(w) ?? []), `#${concept}`]);
-}
-
-/** Keywords plus simple singulars and "#concept" tags, for retrieval. */
-export function expandKeywords(words: string[]): string[] {
-  const out = new Set<string>();
-  for (const w of words) {
-    out.add(w);
-    const single = w.length > 4 && w.endsWith('ies') ? `${w.slice(0, -3)}y` : w.length > 4 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : null;
-    if (single) out.add(single);
-    for (const c of [...(WORD_CONCEPTS.get(w) ?? []), ...(single ? (WORD_CONCEPTS.get(single) ?? []) : [])]) out.add(c);
-  }
-  return [...out];
-}
-
-/** Query/candidate overlap: a shared word counts 1, a shared concept 0.6, a shared word stem 0.5. */
-function overlapScore(queryWords: string[], hay: Set<string>): number {
-  let overlap = 0;
-  for (const w of queryWords) {
-    if (hay.has(w)) overlap += w.startsWith('#') ? 0.6 : 1;
-    else if (!w.startsWith('#') && w.length > 4 && [...hay].some((h) => h.startsWith(w.slice(0, 4)))) overlap += 0.5;
-  }
-  return overlap;
-}
-
 /** Pick the memories most relevant to a query: word and concept overlap, importance, pins and recency. */
 export function relevantMemories(memories: Memory[], query: string, now: number, limit = 4): Memory[] {
-  const words = expandKeywords(keywords(query));
-  const scored = memories.map((m) => {
-    const hay = new Set(expandKeywords([...m.tags, ...keywords(m.text)]));
-    const ageDays = Math.max(0, now - m.at) / 86_400_000;
-    const score = overlapScore(words, hay) * 3 + m.importance * 1.2 + (m.pinned ? 4 : 0) + 2 * Math.exp(-ageDays / 7);
-    return { m, score };
-  });
-  scored.sort((a, b) => b.score - a.score || b.m.at - a.m.at);
-  return scored.slice(0, limit).map((x) => x.m);
+  return recall(memories, query, { now, limit, filler: limit }).map((r) => r.item);
 }
 
 export function relevantFacts(facts: PlayerFact[], query: string, limit = 4): PlayerFact[] {
-  const words = expandKeywords(keywords(query));
-  return [...facts]
-    .map((f, i) => ({ f, score: overlapScore(words, new Set(expandKeywords(keywords(f.text)))) * 3 + i / facts.length }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((x) => x.f);
+  return recall(facts, query, { now: Date.now(), limit, filler: limit }).map((r) => r.item);
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +146,7 @@ export function setChatSummary(save: SaveData, kinlingId: string, text: string, 
   return s;
 }
 
-const DIARY_KINDS = new Set<GameEvent['kind']>(['hatched', 'care', 'adventure', 'keepsake', 'unlock', 'evolved', 'reverted', 'returned', 'stage', 'egg']);
+const DIARY_KINDS = new Set<GameEvent['kind']>(['hatched', 'care', 'adventure', 'keepsake', 'unlock', 'evolved', 'reverted', 'returned', 'stage', 'egg', 'growth']);
 const SIGNIFICANT = new Set<GameEvent['kind']>(['hatched', 'adventure', 'keepsake', 'unlock', 'evolved', 'stage', 'egg']);
 
 /** Events since the last diary entry, condensed to at most 8 (important ones first). */
@@ -238,7 +168,7 @@ export function canWriteDiary(save: SaveData): boolean {
 export function firstPerson(save: SaveData, text: string): string {
   const name = activeKinling(save)?.name;
   let t = text;
-  if (name && t.startsWith(`${name} `)) t = `I ${t.slice(name.length + 1)}`;
+  if (name && t.startsWith(`${name} `)) t = `I ${t.slice(name.length + 1)}`.replace(/^I has /, 'I have ');
   t = t.replace(/\bits (look|proportions|accent|marking)/g, 'my $1');
   if (name) t = t.replace(new RegExp(`; ${name} had`, 'g'), '; I had');
   if (t.startsWith('A kinling hatched')) t = t.replace('A kinling hatched', 'I hatched');

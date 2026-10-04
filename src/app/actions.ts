@@ -2,8 +2,9 @@
 // immediately; then sound/animation/speech; then (optionally) an AI reaction.
 import { useSyncExternalStore } from 'react';
 import { ai } from '../ai/engine';
-import { chatReply, greet, reactTo, routeMessage, suggestFact, summarizeChat, translateAppearance, translateCare, writeDiary } from '../ai/companion';
+import { appraiseMessage, chatReply, greet, reactTo, routeMessage, suggestFact, summarizeChat, translateAppearance, translateCare, warmRecall, writeDiary } from '../ai/companion';
 import { resolveAdventure, type AdventureOutcome } from '../game/adventure';
+import { applyAppraisal, growthPhrase, pendingAppraisals, reflect, shouldReflect } from '../game/appraisal';
 import { performCare } from '../game/care';
 import { checkAction, type ProposedAction } from '../game/careProposals';
 import { greetingLine, stageUpLine } from '../game/dialogue';
@@ -11,7 +12,7 @@ import { applyEvolution, revertAppearance, type EvolutionRequest } from '../game
 import type { Feedback } from '../game/outcome';
 import { addChatMessage, addDiaryEntry, addPlayerFact, extractFact, pendingDiaryEvents, removePlayerFact, forgetMemory, setChatSummary, setMemoryPinned } from '../game/social';
 import { traitLabel } from '../game/traits';
-import type { CareAction, FoodId, SaveData, Settings } from '../game/types';
+import type { CareAction, FoodId, Personality, PersonalityKey, SaveData, Settings } from '../game/types';
 import type { MinigameResult } from '../minigame/engine';
 import { cancelSiblingHatch, startSiblingHatch } from '../game/eggs';
 import { activeKinling, draft, kinlingById, selectKinling } from '../game/state';
@@ -231,13 +232,16 @@ async function respond(kinlingId: string, clean: string): Promise<{ messageId: s
 }
 
 /**
- * Low-priority model work once a reply is shown: offer to remember something
- * the player shared, and fold older chat into the conversation notes. Both
- * give way the moment the player sends another message.
+ * Low-priority work once a reply is shown: turn the conversation into
+ * memories (and reflect on them when enough has piled up), offer to save a
+ * fact the player shared, and fold older chat into the conversation notes.
+ * Model work gives way the moment the player sends another message.
  */
 async function afterChat(playerText: string, factReplyId: string | null): Promise<void> {
+  const remembered = await rememberChat();
   if (!ai.isReady) return;
-  if (factReplyId && store.save) {
+  // The kinling already remembered this message; asking to remember it again would be odd.
+  if (factReplyId && store.save && !remembered.has(factReplyId)) {
     const fact = await suggestFact(store.save, playerText);
     if (fact) ui.attach(factReplyId, { kind: 'fact', text: fact });
   }
@@ -245,6 +249,50 @@ async function afterChat(playerText: string, factReplyId: string | null): Promis
   if (!save || !store.canWrite) return;
   const notes = await summarizeChat(save);
   if (notes && store.canWrite) store.update((s) => setChatSummary(s, notes.kinlingId, notes.text, notes.throughId, now()));
+}
+
+let remembering = false;
+
+/**
+ * Appraise player messages not yet remembered, oldest first, then let any
+ * kinling with enough on its mind reflect. Stops early when the model is busy
+ * with the player; the rest is picked up after the next message. Returns the
+ * ids of the replies whose player message became a memory.
+ */
+async function rememberChat(): Promise<Set<string>> {
+  const remembered = new Set<string>();
+  if (remembering) return remembered;
+  remembering = true;
+  try {
+    for (;;) {
+      const save = store.save;
+      if (!save || !store.canWrite) return remembered;
+      const next = save.kinlings.flatMap((k) => pendingAppraisals(k).map((p) => ({ k, ...p })))[0];
+      if (!next) break;
+      const appraisal = await appraiseMessage(save, next.k.id, next.message.text, next.reply?.text ?? null);
+      if (!appraisal || !store.canWrite) break;
+      store.update((s) => {
+        const r = applyAppraisal(s, next.k.id, next.message.id, appraisal, now());
+        if (r.memory && next.reply) remembered.add(next.reply.id);
+        return r.save;
+      });
+    }
+    for (const k of store.save?.kinlings ?? []) {
+      if (!store.canWrite || !shouldReflect(k, now())) continue;
+      let changed: Partial<Personality> = {};
+      store.update((s) => {
+        const r = reflect(s, k.id, now());
+        changed = r.change;
+        return r.save;
+      });
+      const keys = Object.keys(changed) as PersonalityKey[];
+      if (keys.length) ui.toast(`${k.name} has been feeling ${keys.slice(0, 2).map((key) => growthPhrase(key, changed[key]!)).join(' and ')} lately.`, 'info');
+    }
+  } finally {
+    remembering = false;
+  }
+  if (store.save) warmRecall(store.save);
+  return remembered;
 }
 
 function addCreatureMessage(kinlingId: string, text: string, source: 'ai' | 'authored'): string | null {

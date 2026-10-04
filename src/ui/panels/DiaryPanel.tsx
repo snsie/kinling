@@ -2,7 +2,9 @@
 import { useState } from 'react';
 import { addFact, deleteMemory, pinMemory, removeFact, writeDiaryEntry } from '../../app/actions';
 import { canWriteDiary, pendingDiaryEvents } from '../../game/social';
-import type { SaveData } from '../../game/types';
+import { growthPhrase } from '../../game/appraisal';
+import type { Memory, SaveData } from '../../game/types';
+import { PERSONALITY_KEYS } from '../../game/types';
 import { formatTime } from '../common';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
@@ -61,12 +63,18 @@ export function DiaryPanel({ save }: { save: SaveData }) {
 
       <section className="tile diary__section" aria-labelledby="mem-title" data-reveal="">
         <h3 id="mem-title">Memories</h3>
-        <p className="hint">Recorded from things that really happened in the game. Pinned memories are always kept and mentioned more often.</p>
+        <p className="hint">
+          Recorded from things that really happened in the game and from your chats. What {c.name} remembers slowly shapes its personality: forget a memory
+          before {c.name} reflects on it and it won't. Pinned memories are always kept and mentioned more often.
+        </p>
         <ul className="memory-list">
           {memories.map((m) => (
-            <li key={m.id} className={`memory ${m.pinned ? 'memory--pinned' : ''}`}>
+            <li key={m.id} className={`memory ${m.pinned ? 'memory--pinned' : ''} ${m.kind === 'reflection' ? 'memory--reflection' : ''}`}>
               <span className="memory__text">{m.text}</span>
-              <span className="memory__meta">{formatTime(m.at)}</span>
+              <span className="memory__meta">
+                {formatTime(m.at)}
+                {memoryNote(m, c.lastReflectionAt) && ` · ${memoryNote(m, c.lastReflectionAt)}`}
+              </span>
               <span className="memory__actions">
                 <button className="icon-btn icon-btn--small" aria-pressed={m.pinned} onClick={() => pinMemory(m.id, !m.pinned)} aria-label={m.pinned ? 'Unpin memory' : 'Pin memory'} title={m.pinned ? 'Unpin' : 'Pin'}>
                   {Icon.pin(16)}
@@ -114,4 +122,13 @@ export function DiaryPanel({ save }: { save: SaveData }) {
       </section>
     </div>
   );
+}
+
+/** "Thought", or which way a chat memory is nudging personality until it is reflected on. */
+function memoryNote(m: Memory, lastReflectionAt: number): string {
+  if (m.kind === 'reflection') return 'a thought about growing';
+  const moving = PERSONALITY_KEYS.filter((key) => m.influence[key] !== 0);
+  if (!moving.length) return '';
+  const phrases = moving.map((key) => growthPhrase(key, m.influence[key])).join(', ');
+  return m.at > lastReflectionAt ? `may make it ${phrases}` : `made it ${phrases}`;
 }

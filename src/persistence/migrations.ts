@@ -6,6 +6,8 @@
 // v2 had no conversation summary.
 // v3 had a single `creature`, with its memories, chat, appearance history and
 // daily counters at the top level of the save.
+// v4 memories had no feeling or personality influence, and kinlings did not
+// turn chat into memories or reflect on them.
 import { playerFeelingFromBond } from '../game/state';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
 import type { SaveData } from '../game/types';
@@ -71,6 +73,23 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
       settings: { ...settings, ai: { ...(settings.ai as AnyRecord), memorySearch: false } },
       schemaVersion: 4,
     };
+  },
+  4: (v4) => {
+    const updatedAt = typeof v4.updatedAt === 'number' ? v4.updatedAt : 0;
+    const kinlings = (Array.isArray(v4.kinlings) ? v4.kinlings : []).map((raw) => {
+      const k = raw as AnyRecord;
+      const chat = Array.isArray(k.chat) ? (k.chat as AnyRecord[]) : [];
+      const daily = (k.socialDaily ?? {}) as AnyRecord;
+      return {
+        ...k,
+        memories: (Array.isArray(k.memories) ? k.memories : []).map((m) => ({ ...(m as AnyRecord), valence: 0, influence: { curiosity: 0, confidence: 0, playfulness: 0 } })),
+        socialDaily: { ...daily, reflectPersonality: { curiosity: 0, confidence: 0, playfulness: 0 } },
+        // Earlier chat is not turned into memories after the fact.
+        appraisedThroughId: typeof chat.at(-1)?.id === 'string' ? chat.at(-1)!.id : null,
+        lastReflectionAt: updatedAt,
+      };
+    });
+    return { ...v4, kinlings, schemaVersion: 5 };
   },
 };
 
