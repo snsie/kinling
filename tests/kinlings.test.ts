@@ -97,7 +97,7 @@ describe('save format v4', () => {
     expect(k.memories.every((m) => m.private === false && m.withIds.length === 0)).toBe(true);
     expect(k.chat.map((m) => m.text)).toEqual(['hi']);
     expect(k.careLog.feed).toEqual([T0]);
-    expect(save.feelings).toEqual([{ from: k.id, to: PLAYER_ID, warmth: 50, trust: 50, familiarity: 60 }]);
+    expect(save.feelings).toEqual([{ from: k.id, to: PLAYER_ID, warmth: 50, trust: 50, familiarity: 60, topics: [] }]);
     expect(save.conversations).toEqual([]);
     expect(save.player.facts.every((f) => f.shareable === false)).toBe(true);
     expect(save.settings.ai.memorySearch).toBe(false);
@@ -131,12 +131,12 @@ describe('save format v4', () => {
     const base = fourKinlings();
     const [a, b] = base.kinlings;
     const cases: [string, (s: SaveData) => void][] = [
-      ['feeling about a missing kinling', (s) => s.feelings.push({ from: a!.id, to: 'kin_ghost', warmth: 0, trust: 0, familiarity: 0 })],
-      ['feeling from a missing kinling', (s) => s.feelings.push({ from: 'kin_ghost', to: PLAYER_ID, warmth: 0, trust: 0, familiarity: 0 })],
-      ['feeling about itself', (s) => s.feelings.push({ from: a!.id, to: a!.id, warmth: 0, trust: 0, familiarity: 0 })],
+      ['feeling about a missing kinling', (s) => s.feelings.push({ from: a!.id, to: 'kin_ghost', warmth: 0, trust: 0, familiarity: 0, topics: [] })],
+      ['feeling from a missing kinling', (s) => s.feelings.push({ from: 'kin_ghost', to: PLAYER_ID, warmth: 0, trust: 0, familiarity: 0, topics: [] })],
+      ['feeling about itself', (s) => s.feelings.push({ from: a!.id, to: a!.id, warmth: 0, trust: 0, familiarity: 0, topics: [] })],
       ['duplicate feeling', (s) => s.feelings.push({ ...s.feelings[0]! })],
       ['negative warmth toward the player', (s) => (s.feelings[0]!.warmth = -5)],
-      ['warmth out of range', (s) => s.feelings.push({ from: a!.id, to: b!.id, warmth: 140, trust: 0, familiarity: 0 })],
+      ['warmth out of range', (s) => s.feelings.push({ from: a!.id, to: b!.id, warmth: 140, trust: 0, familiarity: 0, topics: [] })],
       ['missing active kinling', (s) => (s.activeKinlingId = 'kin_ghost')],
       ['duplicate kinling id', (s) => (s.kinlings[1]!.id = a!.id)],
       ['five kinlings', (s) => s.kinlings.push(structuredClone({ ...s.kinlings[0]!, id: 'kin_extra' }))],

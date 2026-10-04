@@ -21,7 +21,7 @@ import { DiaryPanel } from './panels/DiaryPanel';
 import { EvolvePanel } from './panels/EvolvePanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { TalkPanel } from './panels/TalkPanel';
-import { Stage } from './Stage';
+import { RoomView } from './RoomView';
 import { activeKinling } from '../game/state';
 
 type Adventure = { phase: 'play'; config: RunConfig } | { phase: 'results'; rewards: RewardSummary; route: RouteId; line?: string };
@@ -146,7 +146,7 @@ export function GameScreen({ save, reducedMotion }: { save: SaveData; reducedMot
   return (
     <main className="layout" id="main">
       <section className="layout__home" aria-label="Home">
-        <Stage save={save} reducedMotion={reducedMotion} />
+        <RoomView save={save} reducedMotion={reducedMotion} />
         <NeedsPanel needs={c.needs} />
         <CareBar save={save} />
       </section>

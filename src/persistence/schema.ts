@@ -107,11 +107,20 @@ const KinlingSchema = CreatureSchema.extend({
     day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     personalityDelta: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
     chatBond: z.number().finite().min(0).max(100),
+    socialPersonality: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
+    feelingDelta: z.record(id, z.object({ warmth: z.number().finite().min(-100).max(100), trust: z.number().finite().min(-100).max(100) })).refine((r) => Object.keys(r).length <= LIMITS.kinlings, { message: 'Too many entries' }),
   }),
 });
 
 const feelingValue = z.number().finite().min(-30).max(100);
-const FeelingSchema = z.object({ from: id, to: id, warmth: feelingValue, trust: feelingValue, familiarity: percent });
+const FeelingSchema = z.object({
+  from: id,
+  to: id,
+  warmth: feelingValue,
+  trust: feelingValue,
+  familiarity: percent,
+  topics: z.array(z.object({ topic: z.string().max(40), at: time })).max(LIMITS.feelingTopics),
+});
 
 const ConversationSchema = z.object({
   id,

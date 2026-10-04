@@ -199,6 +199,7 @@ export const EVENT_KINDS = [
   'returned',
   'stage',
   'diary',
+  'egg',
 ] as const;
 export type GameEventKind = (typeof EVENT_KINDS)[number];
 
@@ -287,6 +288,10 @@ export interface KinlingDaily {
   personalityDelta: Personality;
   /** Bond already earned from chatting today. */
   chatBond: number;
+  /** Personality change from conversations today (capped separately from care). */
+  socialPersonality: Personality;
+  /** Today's change in this kinling's feelings toward each partner id. */
+  feelingDelta: Record<string, { warmth: number; trust: number }>;
 }
 
 /** A creature plus everything that belongs to it alone. */
@@ -316,6 +321,8 @@ export interface Feeling {
   trust: number;
   /** 0..100 */
   familiarity: number;
+  /** Topics talked about together in the last day, for novelty. */
+  topics: { topic: string; at: number }[];
 }
 
 export interface ConversationLine {

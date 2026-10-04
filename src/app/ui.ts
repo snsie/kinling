@@ -49,6 +49,17 @@ let state: UiState = {
 };
 const listeners = new Set<() => void>();
 let animTimer: ReturnType<typeof setTimeout> | null = null;
+let speechTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Clear a finished line after long enough to read it. */
+function fadeSpeechLater() {
+  if (speechTimer) clearTimeout(speechTimer);
+  const speech = state.speech;
+  if (!speech || speech.streaming) return;
+  speechTimer = setTimeout(() => {
+    if (state.speech?.key === speech.key) set({ speech: null });
+  }, 9000 + speech.text.length * 50);
+}
 let toastId = 1;
 let speechKey = 1;
 
@@ -70,6 +81,11 @@ export const ui = {
   },
   say(text: string, source: Speech['source'] = 'authored', streaming = false) {
     set({ speech: { text, source, streaming, key: speechKey++ } });
+    fadeSpeechLater();
+  },
+  /** Clear the speech bubble (e.g. when another kinling is selected). */
+  hush() {
+    if (state.speech) set({ speech: null });
   },
   /** Update the current line in place while streaming. */
   stream(text: string) {
@@ -78,6 +94,7 @@ export const ui = {
   },
   endStream() {
     if (state.speech) set({ speech: { ...state.speech, streaming: false } });
+    fadeSpeechLater();
   },
   toast(text: string, tone: Toast['tone'] = 'info') {
     const t: Toast = { id: toastId++, text, tone };

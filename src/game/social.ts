@@ -216,8 +216,8 @@ export function setChatSummary(save: SaveData, kinlingId: string, text: string, 
   return s;
 }
 
-const DIARY_KINDS = new Set<GameEvent['kind']>(['hatched', 'care', 'adventure', 'keepsake', 'unlock', 'evolved', 'reverted', 'returned', 'stage']);
-const SIGNIFICANT = new Set<GameEvent['kind']>(['hatched', 'adventure', 'keepsake', 'unlock', 'evolved', 'stage']);
+const DIARY_KINDS = new Set<GameEvent['kind']>(['hatched', 'care', 'adventure', 'keepsake', 'unlock', 'evolved', 'reverted', 'returned', 'stage', 'egg']);
+const SIGNIFICANT = new Set<GameEvent['kind']>(['hatched', 'adventure', 'keepsake', 'unlock', 'evolved', 'stage', 'egg']);
 
 /** Events since the last diary entry, condensed to at most 8 (important ones first). */
 export function pendingDiaryEvents(save: SaveData): GameEvent[] {

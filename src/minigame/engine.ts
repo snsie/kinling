@@ -4,6 +4,7 @@ import type { RouteId } from '../game/types';
 import { createRng, uid } from '../game/util';
 import type { ArenaDef, CollectibleKind, MoverDef } from './arenas';
 import { ARENA_H, ARENA_W, ARENAS, insideCircle, insideEllipse, PLAYER_R } from './arenas';
+import { findPath, NEIGHBOURS } from './pathfind';
 
 export interface RunConfig {
   route: RouteId;
@@ -98,7 +99,6 @@ export const INITIAL_ITEMS = 3;
 /** Longest possible run (relaxed mode). */
 export const MAX_DURATION = 60;
 const CELL = 8;
-const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const;
 const STUN_TIME = 0.7;
 const INVULN_TIME = 1.6;
 const GOLDEN_TTL = 7;
@@ -235,54 +235,27 @@ export class MinigameRun {
       if (best === -1) return [];
       goal = best;
     }
-    const prev = new Int32Array(this.grid.length).fill(-1);
-    const queue = new Int32Array(this.grid.length);
-    let head = 0;
-    let tail = 0;
-    const cols = this.cols;
     // Seed from nearby cells we can walk to in a straight line from the real position.
+    const cols = this.cols;
     const sc = start % cols;
     const sr = Math.floor(start / cols);
+    const starts: number[] = [];
     for (let dr = -2; dr <= 2; dr++) {
       for (let dc = -2; dc <= 2; dc++) {
         const c = sc + dc;
         const r = sr + dr;
         if (c < 0 || r < 0 || c >= cols || r >= this.rows) continue;
         const i = r * cols + c;
-        if (!this.grid[i] || prev[i] !== -1) continue;
+        if (!this.grid[i]) continue;
         if ((this.avoid.get(i) ?? -1) > this.state.t) continue;
         const center = this.cellCenter(i);
         if (!this.clearLine(from.x, from.y, center.x, center.y)) continue;
-        prev[i] = i;
-        queue[tail++] = i;
+        starts.push(i);
       }
     }
-    if (tail === 0) return [];
-    while (head < tail) {
-      const cur = queue[head++]!;
-      if (cur === goal) break;
-      const cx = cur % cols;
-      const cy = Math.floor(cur / cols);
-      const mask = this.links[cur]!;
-      for (let bit = 0; bit < NEIGHBOURS.length; bit++) {
-        if (!(mask & (1 << bit))) continue;
-        const [dx, dy] = NEIGHBOURS[bit]!;
-        const nx = cx + dx;
-        const ny = cy + dy;
-        if (nx < 0 || ny < 0 || nx >= cols || ny >= this.rows) continue;
-        const ni = ny * cols + nx;
-        if (prev[ni] !== -1 || !this.grid[ni]) continue;
-        prev[ni] = cur;
-        queue[tail++] = ni;
-      }
-    }
-    if (prev[goal] === -1) return [];
-    const cells: number[] = [];
-    for (let at = goal; ; at = prev[at]!) {
-      cells.push(at);
-      if (prev[at] === at) break;
-    }
-    cells.reverse();
+    if (!starts.length) return [];
+    const cells = findPath(this.grid, cols, starts, goal, this.links);
+    if (!cells.length) return [];
     const points = cells.map((i) => this.cellCenter(i));
     if (this.grid[this.cellOf(to.x, to.y)]) points.push({ x: to.x, y: to.y });
     return points;

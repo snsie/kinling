@@ -31,6 +31,8 @@ export const LIMITS = {
   /** One per ordered pair: 4 kinlings × (3 others + the player). */
   feelings: 16,
   conversations: 20,
+  /** Recent topics remembered per feeling, for novelty. */
+  feelingTopics: 8,
   conversationLines: 8,
   chat: 40,
   diary: 60,
@@ -82,7 +84,13 @@ export function emptyInventory(): Inventory {
 }
 
 export function freshDaily(now: number): KinlingDaily {
-  return { day: dayKey(now), personalityDelta: { curiosity: 0, confidence: 0, playfulness: 0 }, chatBond: 0 };
+  return {
+    day: dayKey(now),
+    personalityDelta: { curiosity: 0, confidence: 0, playfulness: 0 },
+    chatBond: 0,
+    socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
+    feelingDelta: {},
+  };
 }
 
 export function emptyCareLog(): Record<CareAction, number[]> {
@@ -138,6 +146,13 @@ export function activeKinling(save: SaveData): Kinling | null {
   return kinlingById(save, save.activeKinlingId) ?? save.kinlings[0] ?? null;
 }
 
+export function selectKinling(save: SaveData, id: string): SaveData {
+  if (save.activeKinlingId === id || !kinlingById(save, id)) return save;
+  const s = draft(save);
+  s.activeKinlingId = id;
+  return s;
+}
+
 export function feelingOf(save: SaveData, from: string, to: string): Feeling | null {
   return save.feelings.find((f) => f.from === from && f.to === to) ?? null;
 }
@@ -145,7 +160,7 @@ export function feelingOf(save: SaveData, from: string, to: string): Feeling | n
 /** A kinling's starting feelings toward the player: warmer the longer they have been friends. */
 export function playerFeelingFromBond(from: string, bond: number): Feeling {
   const warmth = Math.round(Math.min(60, 20 + bond / 4));
-  return { from, to: PLAYER_ID, warmth, trust: warmth, familiarity: Math.round(Math.min(100, bond / 2)) };
+  return { from, to: PLAYER_ID, warmth, trust: warmth, familiarity: Math.round(Math.min(100, bond / 2)), topics: [] };
 }
 
 export interface HatchOptions {

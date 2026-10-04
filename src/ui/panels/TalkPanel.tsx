@@ -10,7 +10,9 @@ import { traitLabel } from '../../game/traits';
 import type { RouteId, SaveData } from '../../game/types';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
-import { activeKinling } from '../../game/state';
+import { isTopic, TOPIC_LABELS } from '../../game/chatter';
+import { activeKinling, kinlingById } from '../../game/state';
+import { formatTime } from '../common';
 
 const QUICK = ['How are you feeling?', 'What should we do?', 'Tell me about your keepsakes', 'Remember that my favorite color is green'];
 
@@ -98,7 +100,34 @@ export function TalkPanel({ save, onExplore }: { save: SaveData; onExplore: (rou
         )}
       </form>
       {!aiOn && <p className="hint">The on-device AI is off or still loading, so {c.name} answers with its own hand-written words. Manage AI in Settings.</p>}
+      {save.kinlings.length > 1 && <Overheard save={save} />}
     </div>
+  );
+}
+
+/** Conversations kinlings had with each other in the room, newest first. */
+function Overheard({ save }: { save: SaveData }) {
+  const name = (id: string) => kinlingById(save, id)?.name ?? 'Someone';
+  const logs = [...save.conversations].reverse();
+  return (
+    <section className="overheard" aria-labelledby="overheard-title">
+      <h3 id="overheard-title">Overheard</h3>
+      {logs.length === 0 && <p className="hint">When two kinlings bump into each other in the hollow, they stop for a chat. You'll find what they said here.</p>}
+      <div className="overheard__log" role="log" aria-labelledby="overheard-title">
+        {logs.map((log) => (
+          <article key={log.id} className="overheard__item">
+            <p className="overheard__meta">
+              {name(log.a)} &amp; {name(log.b)} · {isTopic(log.topic) ? TOPIC_LABELS[log.topic] : log.topic} · {formatTime(log.at)}
+            </p>
+            {log.lines.map((l, i) => (
+              <p key={i} className="overheard__line">
+                <strong>{name(l.speaker)}:</strong> {l.text}
+              </p>
+            ))}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -361,6 +361,102 @@ await step('import a modified backup (paddle tail earned) and use the paddle-tai
   return res.slice(0, 160);
 });
 
+/** The exported save with three more kinlings who have all just met. */
+function withFourKinlings(file) {
+  const out = structuredClone(file);
+  const s = out.save;
+  const base = s.kinlings[0];
+  const extras = [
+    ['Pip', { curiosity: 48, confidence: 38, playfulness: 70 }],
+    ['Fig', { curiosity: 66, confidence: 55, playfulness: 40 }],
+    ['Luma', { curiosity: 52, confidence: 47, playfulness: 58 }],
+  ];
+  for (const [i, [name, personality]] of extras.entries()) {
+    s.kinlings.push({
+      ...structuredClone(base),
+      id: `kin_e2e_${i}`,
+      name,
+      personality,
+      baseline: { ...personality },
+      bond: 0,
+      memories: [],
+      chat: [],
+      chatSummary: null,
+      appearanceHistory: [],
+      careLog: { feed: [], groom: [], rest: [], play: [] },
+      socialDaily: { ...base.socialDaily, socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 }, feelingDelta: {} },
+    });
+  }
+  s.feelings = s.feelings.filter((f) => f.to === 'player');
+  for (const k of s.kinlings) {
+    if (!s.feelings.some((f) => f.from === k.id)) s.feelings.push({ from: k.id, to: 'player', warmth: 20, trust: 20, familiarity: 0, topics: [] });
+    for (const o of s.kinlings) if (o.id !== k.id) s.feelings.push({ from: k.id, to: o.id, warmth: 15, trust: 10, familiarity: 0, topics: [] });
+  }
+  s.conversations = [];
+  return out;
+}
+
+await step('four kinlings: import, then pick one from the list to care for', async () => {
+  await page.getByRole('tab', { name: /Settings/ }).click();
+  const four = withFourKinlings(exported);
+  await page.locator('input[type=file]').setInputFiles({ name: 'four.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(four)) });
+  await page.getByRole('dialog', { name: 'Replace your current save?' }).waitFor();
+  await page.getByRole('button', { name: 'Import and replace' }).click();
+  await page.getByText('Backup imported.').waitFor();
+  const picker = page.getByRole('group', { name: 'Choose a kinling to care for' });
+  await picker.waitFor();
+  const names = (await picker.getByRole('button').allTextContents()).map((t) => t.trim());
+  expect(names.join(',') === 'Mochi,Pip,Fig,Luma', `picker shows ${names}`);
+  await picker.getByRole('button', { name: 'Pip' }).click();
+  expect((await picker.getByRole('button', { name: 'Pip' }).getAttribute('aria-pressed')) === 'true', 'Pip not selected');
+  await page.getByRole('tab', { name: /Talk/ }).click();
+  await page.getByRole('heading', { name: 'Talk with Pip' }).waitFor();
+  const cleanBefore = Number(await page.locator('.needs [role=meter]').nth(2).getAttribute('aria-valuenow'));
+  await page.getByRole('button', { name: 'Groom' }).click();
+  await page.waitForTimeout(200);
+  const cleanAfter = Number(await page.locator('.needs [role=meter]').nth(2).getAttribute('aria-valuenow'));
+  expect(cleanAfter >= cleanBefore, 'grooming Pip did not register');
+  await shot(page, 'room-four');
+  const v = await axe('room');
+  return `${names.join(', ')}; Pip selected | axe violations: ${v}`;
+});
+
+await step('two kinlings meet and talk; the conversation survives a reload', async () => {
+  // The ?e2e flag exposes a hook for placing kinlings (not available otherwise).
+  await page.goto(`${BASE}?e2e`);
+  await page.getByRole('tablist', { name: 'Activities' }).waitFor();
+  let pair = null;
+  for (let i = 0; i < 20 && !pair; i++) {
+    pair = await page.evaluate(() => window.kinlingRoom?.placeTogether() ?? null);
+    if (!pair) await page.waitForTimeout(500);
+  }
+  expect(pair, 'no pair free to talk');
+  await page.locator('.room-bubble').first().waitFor({ timeout: 8000 });
+  await shot(page, 'room-conversation');
+  await page.getByRole('tab', { name: /Talk/ }).click();
+  const item = page.locator('.overheard__item').first();
+  await item.waitFor();
+  const before = (await item.textContent()).trim();
+  await page.waitForTimeout(1200);
+  await page.reload();
+  await page.getByRole('tab', { name: /Talk/ }).click();
+  const after = (await page.locator('.overheard__item').first().textContent()).trim();
+  expect(after === before, `conversation changed after reload: ${after}`);
+  return before.slice(0, 140);
+});
+
+await step('Bag describes feelings in words', async () => {
+  await page.getByRole('tab', { name: /Bag/ }).click();
+  const text = (await page.locator('.about__feelings').textContent()).trim();
+  expect(/Feelings: .*(you)/.test(text), `unexpected feelings text: ${text}`);
+  const mochi = page.getByRole('group', { name: 'Choose a kinling to care for' }).getByRole('button', { name: 'Mochi' });
+  await mochi.click();
+  expect((await mochi.getAttribute('aria-pressed')) === 'true', 'Mochi not selected again');
+  // Let the autosave land before the next step opens a second tab.
+  await page.waitForTimeout(1200);
+  return text;
+});
+
 await step('second tab is read-only; "Play here instead" takes over', async () => {
   const p2 = await ctx.newPage();
   watch(p2, 'tab2');

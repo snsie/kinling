@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { doCare } from '../../app/actions';
 import { FOODS, KEEPSAKES, MATERIALS } from '../../game/catalog';
 import { nextStageAt, lifeStageFor, STAGE_LABELS } from '../../game/stage';
+import { nextEggAt, totalBond } from '../../game/eggs';
+import { describeFeelings } from '../../game/feelings';
 import { activeKinling, personalityWords } from '../../game/state';
 import type { FoodId, KeepsakeId, MaterialId, SaveData } from '../../game/types';
 import { FOOD_IDS, KEEPSAKE_IDS, MATERIAL_IDS } from '../../game/types';
@@ -17,6 +19,8 @@ export function BagPanel({ save }: { save: SaveData }) {
   const stage = lifeStageFor(c.bond);
   const next = nextStageAt(c.bond);
   const pref = c.preferences;
+  const feelings = describeFeelings(save, c.id);
+  const nextEgg = nextEggAt(save);
   return (
     <div className="panel bag">
       <h2 className="panel__title">
@@ -91,6 +95,11 @@ export function BagPanel({ save }: { save: SaveData }) {
         <p>
           {STAGE_LABELS[stage]} from a {c.egg} egg · {personalityWords(c.personality).join(', ')}
         </p>
+        {feelings.length > 0 && (
+          <p className="about__feelings">
+            <span>Feelings:</span> {feelings.join('; ')}.
+          </p>
+        )}
         <div className="about__grid">
           <span>Curiosity</span>
           <Bar value={c.personality.curiosity} color="var(--sky)" label="Curiosity" />
@@ -111,6 +120,11 @@ export function BagPanel({ save }: { save: SaveData }) {
           <li>Not fond of: {pref.knownDislikedFood ? FOODS[pref.dislikedFood].name : 'unknown'}</li>
           <li>Favorite place: {pref.knownFavoritePlace ? `the ${pref.favoritePlace}` : 'not discovered yet — explore!'}</li>
         </ul>
+        {nextEgg !== null && (
+          <p className="hint">
+            A new egg arrives when your kinlings' bond adds up to {nextEgg} (now {Math.floor(totalBond(save))}).
+          </p>
+        )}
       </section>
     </div>
   );

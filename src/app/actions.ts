@@ -13,7 +13,8 @@ import { addChatMessage, addDiaryEntry, addPlayerFact, extractFact, pendingDiary
 import { traitLabel } from '../game/traits';
 import type { CareAction, FoodId, SaveData, Settings } from '../game/types';
 import type { MinigameResult } from '../minigame/engine';
-import { activeKinling, draft, kinlingById } from '../game/state';
+import { cancelSiblingHatch, startSiblingHatch } from '../game/eggs';
+import { activeKinling, draft, kinlingById, selectKinling } from '../game/state';
 import { playSfx } from './sfx';
 import { store, type StoreSnapshot } from './store';
 import { ui } from './ui';
@@ -37,6 +38,23 @@ export function presentFeedback(f: Feedback): void {
     ui.toast(`Your kinling grew into a ${f.stageUp}!`, 'success');
     setTimeout(() => ui.say(stageUpLine(f.stageUp!), 'authored'), 2600);
   }
+  if (f.eggArrived) ui.toast('A new egg appeared in the hollow! Hatch it from home.', 'success');
+}
+
+/** Make another kinling the one Care, Talk, Explore and Evolve act on. */
+export function chooseKinling(id: string): void {
+  const save = store.save;
+  if (!save || save.activeKinlingId === id || readOnlyWarning()) return;
+  if (store.update((s) => selectKinling(s, id), { meaningful: true })) ui.hush();
+}
+
+export function beginEggHatch(): void {
+  if (readOnlyWarning()) return;
+  store.update((s) => startSiblingHatch(s));
+}
+
+export function leaveEggForLater(): void {
+  store.update((s) => cancelSiblingHatch(s));
 }
 
 /** If the model is ready and idle, replace the authored line with a short AI reaction. */

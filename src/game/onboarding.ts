@@ -2,6 +2,8 @@
 import { COLORS, EGGS, STARTER_COLORS } from './catalog';
 import type { Outcome } from './outcome';
 import { rejected } from './outcome';
+import { eggWaiting } from './eggs';
+import { firstMeeting } from './feelings';
 import { activeKinling, draft, eggDefaults, hatchKinling, playerFeelingFromBond, recordEvent, recordMemory, LIMITS } from './state';
 import { SHAPE_PRESETS, starterTraitsFor, TRAIT_BY_ID, withTrait } from './traits';
 import type { Appearance, ColorId, EarId, EggType, OnboardingStep, PatternId, SaveData, TailId, TraitId } from './types';
@@ -79,19 +81,31 @@ export function setDraftAppearance(save: SaveData, appearance: Appearance): Save
 export function hatch(save: SaveData, now: number): Outcome {
   const egg = save.onboarding.egg;
   if (!egg || !save.onboarding.draftAppearance) return rejected(save, 'Choose an egg first.');
-  if (save.kinlings.length) return rejected(save, 'Already hatched.');
+  const sibling = save.kinlings.length > 0;
+  if (sibling && !eggWaiting(save)) return rejected(save, 'There is no egg waiting to hatch.');
   const s = draft(save);
   const def = EGGS[egg];
   const starters = starterTraitsFor(egg);
   const k = hatchKinling(s, egg, normalizeCreationAppearance(egg, s.onboarding.draftAppearance!), now);
+  const siblings = [...s.kinlings];
   s.kinlings.push(k);
   s.activeKinlingId = k.id;
   s.feelings.push(playerFeelingFromBond(k.id, k.bond));
-  s.unlocks = { traits: [...starters], owned: [...starters] };
-  s.lastTickAt = now;
+  for (const o of siblings) s.feelings.push(firstMeeting(k.id, o.id), firstMeeting(o.id, k.id));
+  if (sibling) {
+    // Unlocks are shared: a new egg adds its own starters to what is already unlocked.
+    for (const t of starters) {
+      if (!s.unlocks.traits.includes(t)) s.unlocks.traits.push(t);
+      if (!s.unlocks.owned.includes(t)) s.unlocks.owned.push(t);
+    }
+  } else {
+    s.unlocks = { traits: [...starters], owned: [...starters] };
+    s.lastTickAt = now;
+  }
   s.onboarding.step = 'name';
   recordEvent(s, 'hatched', `A kinling hatched from a ${def.name.toLowerCase()}.`, now);
-  recordMemory(k, { kind: 'milestone', text: `I hatched from a ${def.name.toLowerCase()} and saw my friend for the first time.`, tags: ['hatch', 'egg', egg, 'birthday', 'first'], importance: 3 }, now);
+  const met = siblings.length ? ` and met ${siblings.map((o) => o.name).join(' and ')}` : '';
+  recordMemory(k, { kind: 'milestone', text: `I hatched from a ${def.name.toLowerCase()}, saw my friend for the first time${met}.`, tags: ['hatch', 'egg', egg, 'birthday', 'first'], importance: 3 }, now);
   return { save: s, feedback: { ok: true, animation: 'happy', sound: 'sparkle', line: '*blinks* ...Hi!' } };
 }
 
@@ -112,9 +126,11 @@ export function nameCreature(save: SaveData, name: string, playerName: string, n
   const s = draft(save);
   const k = activeKinling(s)!;
   k.name = clean;
-  const pn = sanitizeName(playerName, 24);
-  s.player.name = pn || null;
-  s.onboarding.step = 'firstCare';
+  const sibling = s.kinlings.length > 1;
+  // Later kinlings already know the player; only the first naming sets their name.
+  const pn = sibling ? (s.player.name ?? '') : sanitizeName(playerName, 24);
+  if (!sibling) s.player.name = pn || null;
+  s.onboarding = sibling ? { step: 'done', egg: null, draftAppearance: null } : { ...s.onboarding, step: 'firstCare' };
   recordEvent(s, 'hatched', `The new kinling was named ${clean}${pn ? ` by ${pn}` : ''}.`, now);
   recordMemory(k, { kind: 'milestone', text: `${pn || 'My friend'} named me ${clean}.`, tags: ['name', clean.toLowerCase(), 'first'], importance: 3 }, now);
   return { save: s, feedback: { ok: true, animation: 'happy', sound: 'chime', line: `${clean}! I love it. That's me!` } };

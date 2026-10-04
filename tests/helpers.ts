@@ -1,5 +1,7 @@
 import { chooseEgg, hatch, nameCreature } from '../src/game/onboarding';
-import { activeKinling, createSave } from '../src/game/state';
+import { firstMeeting } from '../src/game/feelings';
+import { activeKinling, createSave, eggDefaults, hatchKinling, playerFeelingFromBond } from '../src/game/state';
+import { starterTraitsFor } from '../src/game/traits';
 import type { EggType, Kinling, SaveData } from '../src/game/types';
 
 export const T0 = new Date('2026-03-01T10:00:00').getTime();
@@ -42,4 +44,23 @@ export function legacyV3(save: SaveData): Record<string, unknown> {
     settings: { ...rest.settings, ai: { enabled: rest.settings.ai.enabled, modelId: rest.settings.ai.modelId, downloadConsent: rest.settings.ai.downloadConsent } },
     schemaVersion: 3,
   };
+}
+
+/** Up to four kinlings who have all met. */
+export function family(n = 4): SaveData {
+  const s = hatchedSave('woodland');
+  const eggs: EggType[] = ['aquatic', 'celestial', 'woodland'];
+  for (let i = 0; i < n - 1; i++) {
+    const egg = eggs[i]!;
+    const k = hatchKinling(s, egg, eggDefaults(egg), T0, { seed: i + 1 });
+    k.name = ['Pip', 'Fig', 'Luma'][i]!;
+    for (const o of s.kinlings) s.feelings.push(firstMeeting(k.id, o.id), firstMeeting(o.id, k.id));
+    s.kinlings.push(k);
+    s.feelings.push(playerFeelingFromBond(k.id, 0));
+    for (const t of starterTraitsFor(egg)) {
+      if (!s.unlocks.traits.includes(t)) s.unlocks.traits.push(t);
+      if (!s.unlocks.owned.includes(t)) s.unlocks.owned.push(t);
+    }
+  }
+  return s;
 }

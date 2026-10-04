@@ -48,7 +48,13 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
         chatSummary: chatSummary ?? null,
         appearanceHistory: Array.isArray(appearanceHistory) ? appearanceHistory : [],
         careLog: d.careLog ?? { feed: [], groom: [], rest: [], play: [] },
-        socialDaily: { day: d.day, personalityDelta: d.personalityDelta, chatBond: d.chatBond ?? 0 },
+        socialDaily: {
+          day: d.day,
+          personalityDelta: d.personalityDelta,
+          chatBond: d.chatBond ?? 0,
+          socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
+          feelingDelta: {},
+        },
       });
       feelings.push({ ...playerFeelingFromBond(String(c.id), typeof c.bond === 'number' ? c.bond : 0) });
     }
