@@ -1,0 +1,234 @@
+/* The top-down home room, kinling tokens, conversation bubbles, the
+   kinling picker, the egg banner and the Overheard log. */
+.room-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.room {
+  aspect-ratio: 12 / 8;
+  background: #dcb98f;
+}
+.room__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.room__tint {
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.token {
+  cursor: pointer;
+  transition: transform 0.1s linear;
+}
+.token--hop {
+  transition: none;
+}
+.token__ring {
+  fill: rgba(217, 105, 79, 0.16);
+  stroke: var(--coral);
+  stroke-width: 3;
+}
+.token__tag rect {
+  fill: rgba(255, 250, 243, 0.92);
+  stroke: rgba(120, 82, 48, 0.28);
+  stroke-width: 1.5;
+}
+.token__tag text {
+  font: 800 13px var(--font);
+  fill: var(--ink);
+}
+.token--selected .token__tag rect {
+  fill: var(--coral-strong);
+  stroke: none;
+}
+.token--selected .token__tag text {
+  fill: #fff;
+}
+
+/* Bubbles anchored to a kinling: above or below it, centred or hanging to one side. */
+.bubble-pos {
+  --tx: -50%;
+  --ty: -100%;
+}
+.bubble-pos--below {
+  --ty: 0%;
+}
+.bubble-pos--left,
+.bubble-pos--right {
+  --tx: 0%;
+}
+
+/* The player-facing speech bubble follows the selected kinling. */
+.stage__speech.room__speech {
+  transform: translate(var(--tx, -50%), var(--ty, 0%));
+  width: max-content;
+  max-width: min(78%, 380px);
+}
+.room__speech .speech {
+  font-size: 0.95rem;
+  padding: 8px 14px;
+}
+.room__speech.bubble-pos--below .speech::after {
+  bottom: auto;
+  top: -10px;
+  border-top: 0;
+  border-bottom: 10px solid #fdf8ef;
+}
+.room__speech.bubble-pos--left .speech::after {
+  left: 26px;
+}
+.room__speech.bubble-pos--right .speech::after {
+  left: auto;
+  right: 26px;
+  margin-left: 0;
+  margin-right: -10px;
+}
+
+.room-bubble {
+  position: absolute;
+  z-index: 8;
+  /* Positioned with `translate` so the pop animation can own `transform`. */
+  translate: var(--tx) var(--ty);
+  width: max-content;
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: #fffdf8;
+  color: var(--ink);
+  border: 1px solid rgba(120, 82, 48, 0.18);
+  font-weight: 700;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+  box-shadow: 0 10px 24px -12px rgba(60, 35, 15, 0.5);
+  pointer-events: none;
+  animation: speech-pop 0.4s var(--ease-spring) both;
+  transform-origin: 50% 100%;
+}
+.room-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  margin-left: -8px;
+  border: 8px solid transparent;
+  border-top-color: #fffdf8;
+  border-bottom: 0;
+}
+.room-bubble.bubble-pos--below {
+  transform-origin: 50% 0;
+}
+.room-bubble.bubble-pos--below::after {
+  bottom: auto;
+  top: -8px;
+  border-top: 0;
+  border-bottom: 8px solid #fffdf8;
+}
+.room-bubble.bubble-pos--left::after {
+  left: 26px;
+}
+.room-bubble.bubble-pos--right::after {
+  left: auto;
+  right: 26px;
+  margin-left: 0;
+  margin-right: -8px;
+}
+@container home (max-width: 480px) {
+  .room__speech .speech {
+    font-size: 0.82rem;
+    padding: 6px 10px;
+  }
+  .room-bubble {
+    font-size: 0.76rem;
+    padding: 4px 9px;
+  }
+}
+
+.kin-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.kin-picker__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 3px 14px 3px 4px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  color: var(--ink);
+  font: 800 0.95rem var(--font);
+  cursor: pointer;
+  box-shadow: var(--shadow-1);
+}
+.kin-picker__btn:hover {
+  background: var(--card);
+}
+.kin-picker__btn--on {
+  background: var(--coral-wash);
+  border-color: var(--coral);
+  box-shadow: 0 0 0 2px var(--coral-soft);
+}
+.kin-picker__face {
+  display: block;
+  width: 38px;
+  height: 38px;
+}
+
+.egg-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+.egg-banner__art {
+  flex: none;
+  width: 52px;
+}
+.egg-banner p {
+  flex: 1;
+  margin: 0;
+}
+@container home (max-width: 460px) {
+  .egg-banner {
+    flex-wrap: wrap;
+  }
+}
+
+.overheard {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+.overheard h3 {
+  margin: 0 0 var(--sp-2);
+}
+.overheard__log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: 320px;
+  overflow: auto;
+}
+.overheard__item {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--well);
+}
+.overheard__meta {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.overheard__line {
+  margin: 2px 0;
+}
+.about__feelings span {
+  font-weight: 800;
+}

@@ -19,9 +19,9 @@ export function AiExplainer() {
       <ul className="bullets">
         <li>
           The model is downloaded once from Hugging Face (about {formatMB(MODELS['Qwen3-1.7B-q4f16_1-MLC'].downloadMB)}, or {formatMB(MODELS['Qwen3-0.6B-q4f16_1-MLC'].downloadMB)} for the
-          smaller one) and stored in this browser for offline use.
+          smaller one) and stored in this browser for offline use. A larger {formatMB(MODELS['Qwen3-4B-q4f16_1-MLC'].downloadMB)} model is available in Settings for stronger devices.
         </li>
-        <li>It needs a WebGPU-capable browser (recent Chrome or Edge, or Safari 26+) and about 1.5–2 GB of free graphics memory.</li>
+        <li>It needs a WebGPU-capable browser (recent Chrome or Edge, or Safari 26+) and about 1.5–2 GB of free graphics memory (about 3.5 GB for the largest model).</li>
         <li>Everything works without AI too: your kinling will use its own hand-written words, and all care, adventures and evolution are the same.</li>
       </ul>
     </div>

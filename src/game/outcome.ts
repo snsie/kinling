@@ -23,6 +23,8 @@ export interface Feedback {
   aiEvent?: string;
   unlocked?: TraitId[];
   stageUp?: LifeStage;
+  /** Bond passed a milestone and a new egg arrived. */
+  eggArrived?: boolean;
   rewards?: RewardSummary;
 }
 

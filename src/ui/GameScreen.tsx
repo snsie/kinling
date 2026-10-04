@@ -21,7 +21,8 @@ import { DiaryPanel } from './panels/DiaryPanel';
 import { EvolvePanel } from './panels/EvolvePanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { TalkPanel } from './panels/TalkPanel';
-import { Stage } from './Stage';
+import { RoomView } from './RoomView';
+import { activeKinling } from '../game/state';
 
 type Adventure = { phase: 'play'; config: RunConfig } | { phase: 'results'; rewards: RewardSummary; route: RouteId; line?: string };
 
@@ -39,7 +40,9 @@ export function GameScreen({ save, reducedMotion }: { save: SaveData; reducedMot
   const aiGreeted = useRef(false);
   const panelRef = useRef<HTMLElement>(null);
   const shownTab = useRef(tab);
-  const c = save.creature!;
+  const c = activeKinling(save)!;
+  // The kinling that set out on the current adventure.
+  const adventurer = useRef<string | null>(null);
 
   // Switching tabs from deep inside a long panel (the tab bar is sticky) brings
   // the new panel's top back into view instead of leaving you mid-page.
@@ -84,20 +87,22 @@ export function GameScreen({ save, reducedMotion }: { save: SaveData; reducedMot
 
   const startAdventure = useCallback((route: RouteId) => {
     const s = store.save;
-    if (!s?.creature) return;
-    const avail = routeAvailability(s, route);
+    const k = s && activeKinling(s);
+    if (!s || !k) return;
+    const avail = routeAvailability(s, route, k);
     if (!avail.available) {
       ui.toast(avail.reason ?? 'Not available right now.', 'warn');
       return;
     }
     setAdventure({
       phase: 'play',
-      config: { route, seed: randomSeed(), relaxed: s.settings.relaxedMinigame, firstVisit: isFirstVisit(s, route), canSwim: s.creature.appearance.tail === 'paddle' && route === 'pond-deep' },
+      config: { route, seed: randomSeed(), relaxed: s.settings.relaxedMinigame, firstVisit: isFirstVisit(s, route), canSwim: k.appearance.tail === 'paddle' && route === 'pond-deep' },
     });
+    adventurer.current = k.id;
   }, []);
 
   const onFinish = useCallback((result: MinigameResult) => {
-    const out = finishAdventure(result);
+    const out = finishAdventure(result, adventurer.current ?? undefined);
     if (out?.rewards) setAdventure({ phase: 'results', rewards: out.rewards, route: result.route, line: out.feedback.line });
     else setAdventure(null);
   }, []);
@@ -141,7 +146,7 @@ export function GameScreen({ save, reducedMotion }: { save: SaveData; reducedMot
   return (
     <main className="layout" id="main">
       <section className="layout__home" aria-label="Home">
-        <Stage save={save} reducedMotion={reducedMotion} />
+        <RoomView save={save} reducedMotion={reducedMotion} />
         <NeedsPanel needs={c.needs} />
         <CareBar save={save} />
       </section>

@@ -2,7 +2,7 @@
 // available; otherwise authored lines are used. Proposed actions appear as
 // buttons the player must press — the model never acts on its own.
 import { useEffect, useRef, useState } from 'react';
-import { runProposedAction, sendChat, stopGenerating } from '../../app/actions';
+import { addFact, runProposedAction, sendChat, stopGenerating } from '../../app/actions';
 import { useAiStatus } from '../../app/aiControl';
 import { ui, useUi, type ChatAttachment } from '../../app/ui';
 import { checkAction } from '../../game/careProposals';
@@ -10,11 +10,14 @@ import { traitLabel } from '../../game/traits';
 import type { RouteId, SaveData } from '../../game/types';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
+import { isTopic, TOPIC_LABELS } from '../../game/chatter';
+import { activeKinling, kinlingById } from '../../game/state';
+import { formatTime } from '../common';
 
 const QUICK = ['How are you feeling?', 'What should we do?', 'Tell me about your keepsakes', 'Remember that my favorite color is green'];
 
 export function TalkPanel({ save, onExplore }: { save: SaveData; onExplore: (route: RouteId) => void }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const { chatStreaming, attachments } = useUi();
   const status = useAiStatus();
   const [text, setText] = useState('');
@@ -30,7 +33,7 @@ export function TalkPanel({ save, onExplore }: { save: SaveData; onExplore: (rou
     const glide = settled.current && !document.documentElement.classList.contains('reduce-motion');
     el.scrollTo({ top: el.scrollHeight, behavior: glide ? 'smooth' : 'auto' });
     settled.current = true;
-  }, [save.chat.length, chatStreaming]);
+  }, [c.chat.length, chatStreaming]);
 
   const submit = (value: string) => {
     const v = value.trim();
@@ -50,8 +53,8 @@ export function TalkPanel({ save, onExplore }: { save: SaveData; onExplore: (rou
         </span>
       </div>
       <div className="chat-log" ref={logRef} role="log" aria-label="Conversation" aria-live="polite">
-        {save.chat.length === 0 && !busy && <p className="hint chat-empty">Say hello! You can also ask {c.name} to do things, or describe a new look.</p>}
-        {save.chat.map((m) => (
+        {c.chat.length === 0 && !busy && <p className="hint chat-empty">Say hello! You can also ask {c.name} to do things, or describe a new look.</p>}
+        {c.chat.map((m) => (
           <div key={m.id} className={`msg msg--${m.role}`}>
             <div className="msg__bubble">
               <span className="sr-only">{m.role === 'player' ? 'You' : c.name}: </span>
@@ -97,7 +100,34 @@ export function TalkPanel({ save, onExplore }: { save: SaveData; onExplore: (rou
         )}
       </form>
       {!aiOn && <p className="hint">The on-device AI is off or still loading, so {c.name} answers with its own hand-written words. Manage AI in Settings.</p>}
+      {save.kinlings.length > 1 && <Overheard save={save} />}
     </div>
+  );
+}
+
+/** Conversations kinlings had with each other in the room, newest first. */
+function Overheard({ save }: { save: SaveData }) {
+  const name = (id: string) => kinlingById(save, id)?.name ?? 'Someone';
+  const logs = [...save.conversations].reverse();
+  return (
+    <section className="overheard" aria-labelledby="overheard-title">
+      <h3 id="overheard-title">Overheard</h3>
+      {logs.length === 0 && <p className="hint">When two kinlings bump into each other in the hollow, they stop for a chat. You'll find what they said here.</p>}
+      <div className="overheard__log" role="log" aria-labelledby="overheard-title">
+        {logs.map((log) => (
+          <article key={log.id} className="overheard__item">
+            <p className="overheard__meta">
+              {name(log.a)} &amp; {name(log.b)} · {isTopic(log.topic) ? TOPIC_LABELS[log.topic] : log.topic} · {formatTime(log.at)}
+            </p>
+            {log.lines.map((l, i) => (
+              <p key={i} className="overheard__line">
+                <strong>{name(l.speaker)}:</strong> {l.text}
+              </p>
+            ))}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -114,6 +144,23 @@ function Attachment({ a, messageId, save, onExplore }: { a: ChatAttachment; mess
           }}
         >
           Preview in Evolve
+        </button>
+      </div>
+    );
+  }
+  if (a.kind === 'fact') {
+    const name = activeKinling(save)?.name ?? 'your kinling';
+    if (a.saved) return <p className="hint attach">Saved to "Things you told {name}".</p>;
+    return (
+      <div className="attach" role="group" aria-label="Suggested memory">
+        <p className="hint">Should {name} remember "{a.text}"?</p>
+        <button
+          className="btn btn--small"
+          onClick={() => {
+            if (addFact(a.text)) ui.attach(messageId, { ...a, saved: true });
+          }}
+        >
+          Remember this
         </button>
       </div>
     );

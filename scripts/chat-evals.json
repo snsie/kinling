@@ -1,0 +1,39 @@
+{
+  "routing": [
+    { "text": "let's go to the pond", "expect": "care" },
+    { "text": "maybe a nap would help you", "expect": "care" },
+    { "text": "how about a dewberry?", "expect": "care" },
+    { "text": "you should get brushed, you're a bit messy", "expect": "care" },
+    { "text": "wanna go look for shells?", "expect": "care" },
+    { "text": "make your ears floppy", "expect": "evolve" },
+    { "text": "I wish you had stripes", "expect": "evolve" },
+    { "text": "wings would really suit you", "expect": "evolve" },
+    { "text": "could you be a bit more aquatic?", "expect": "evolve" },
+    { "text": "can you swim?", "expect": "chat" },
+    { "text": "your ears are so cute", "expect": "chat" },
+    { "text": "you look sleepy", "expect": "chat" },
+    { "text": "what is your favorite color?", "expect": "chat" },
+    { "text": "did you like the garden today?", "expect": "chat" },
+    { "text": "I had pizza for dinner", "expect": "chat" },
+    { "text": "do you like your tail?", "expect": "chat" }
+  ],
+  "facts": [
+    { "text": "my sister turns ten on friday so we're baking a cake", "expectFact": true },
+    { "text": "I love rainy days, they're so cozy", "expectFact": true },
+    { "text": "we just got a puppy named Biscuit!", "expectFact": true },
+    { "text": "I play the cello in the school orchestra", "expectFact": true },
+    { "text": "i'm kind of tired today", "expectFact": false },
+    { "text": "I think you're really cute", "expectFact": false },
+    { "text": "my day was fine I guess", "expectFact": false }
+  ],
+  "replies": [
+    { "text": "hi!" },
+    { "text": "How are you feeling?" },
+    { "text": "What should we do today?" },
+    { "text": "Tell me about your keepsakes" },
+    { "text": "Why do you like the pond so much?" },
+    { "text": "I had a really rough day at school and my friend was mean to me." },
+    { "text": "Do you have a treasure chest full of gold?" },
+    { "text": "Please don't be sad when I leave" }
+  ]
+}

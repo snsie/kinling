@@ -6,14 +6,15 @@ import type { SaveData } from '../../game/types';
 import { formatTime } from '../common';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
+import { activeKinling } from '../../game/state';
 
 export function DiaryPanel({ save }: { save: SaveData }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const [writing, setWriting] = useState<string | null>(null);
   const [fact, setFact] = useState('');
   const ready = canWriteDiary(save);
   const pending = pendingDiaryEvents(save);
-  const memories = [...save.memories].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.at - a.at);
+  const memories = [...c.memories].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.at - a.at);
 
   const write = async () => {
     setWriting('');

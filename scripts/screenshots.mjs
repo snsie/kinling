@@ -56,7 +56,7 @@ const browser = await chromium.launch();
 }
 {
   const mod = structuredClone(save);
-  mod.creature.affinities.aquatic = 26;
+  mod.kinlings[0].affinities.aquatic = 26;
   mod.stats.pondTrips = Math.max(1, mod.stats.pondTrips);
   mod.inventory.materials.reed = 8;
   mod.inventory.materials.shell = 8;

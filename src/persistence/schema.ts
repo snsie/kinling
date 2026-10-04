@@ -20,6 +20,7 @@ import {
   MOTION_PREFS,
   ONBOARDING_STEPS,
   PATTERN_IDS,
+  PLAYER_ID,
   ROUTE_IDS,
   SAVE_SCHEMA_VERSION,
   TAIL_IDS,
@@ -76,21 +77,68 @@ const MemorySchema = z.object({
   id,
   at: time,
   kind: z.enum(MEMORY_KINDS),
+  withIds: z.array(id).max(4),
   text: z.string().max(400),
   tags: z.array(z.string().max(40)).max(20),
   importance: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   pinned: z.boolean(),
+  private: z.boolean(),
+});
+
+const careLog = z.array(time).max(20);
+const personalityDelta = z.number().finite().min(-100).max(100);
+
+const ChatMessageSchema = z.object({
+  id,
+  at: time,
+  role: z.enum(CHAT_ROLES),
+  text: z.string().max(LIMITS.chatMessageLength),
+  source: z.enum(['player', 'ai', 'authored']),
+});
+
+const KinlingSchema = CreatureSchema.extend({
+  baseline: PersonalitySchema,
+  memories: z.array(MemorySchema).max(LIMITS.memories),
+  chat: z.array(ChatMessageSchema).max(LIMITS.chat),
+  chatSummary: z.object({ text: z.string().max(LIMITS.summaryLength), at: time, throughId: id }).nullable(),
+  appearanceHistory: z.array(AppearanceSchema).max(LIMITS.appearanceHistory),
+  careLog: z.object(Object.fromEntries(CARE_ACTIONS.map((a) => [a, careLog])) as Record<(typeof CARE_ACTIONS)[number], typeof careLog>),
+  socialDaily: z.object({
+    day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    personalityDelta: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
+    chatBond: z.number().finite().min(0).max(100),
+    socialPersonality: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
+    feelingDelta: z.record(id, z.object({ warmth: z.number().finite().min(-100).max(100), trust: z.number().finite().min(-100).max(100) })).refine((r) => Object.keys(r).length <= LIMITS.kinlings, { message: 'Too many entries' }),
+  }),
+});
+
+const feelingValue = z.number().finite().min(-30).max(100);
+const FeelingSchema = z.object({
+  from: id,
+  to: id,
+  warmth: feelingValue,
+  trust: feelingValue,
+  familiarity: percent,
+  topics: z.array(z.object({ topic: z.string().max(40), at: time })).max(LIMITS.feelingTopics),
+});
+
+const ConversationSchema = z.object({
+  id,
+  at: time,
+  a: id,
+  b: id,
+  topic: z.string().max(80),
+  lines: z.array(z.object({ speaker: id, text: z.string().max(LIMITS.chatMessageLength) })).max(LIMITS.conversationLines),
+  source: z.enum(['ai', 'authored']),
 });
 
 const SettingsSchema = z.object({
-  ai: z.object({ enabled: z.boolean(), modelId: z.enum(MODEL_IDS), downloadConsent: z.boolean() }),
+  ai: z.object({ enabled: z.boolean(), modelId: z.enum(MODEL_IDS), downloadConsent: z.boolean(), memorySearch: z.boolean() }),
   sound: z.boolean(),
   volume: unit,
   reducedMotion: z.enum(MOTION_PREFS),
   relaxedMinigame: z.boolean(),
 });
-
-const careLog = z.array(time).max(20);
 
 export const SaveSchema = z.object({
   schemaVersion: z.literal(SAVE_SCHEMA_VERSION),
@@ -104,10 +152,13 @@ export const SaveSchema = z.object({
     egg: z.enum(EGG_TYPES).nullable(),
     draftAppearance: AppearanceSchema.nullable(),
   }),
-  creature: CreatureSchema.nullable(),
+  kinlings: z.array(KinlingSchema).max(LIMITS.kinlings),
+  activeKinlingId: id.nullable(),
+  feelings: z.array(FeelingSchema).max(LIMITS.feelings),
+  conversations: z.array(ConversationSchema).max(LIMITS.conversations),
   player: z.object({
     name: z.string().max(24).nullable(),
-    facts: z.array(z.object({ id, at: time, text: z.string().max(LIMITS.factLength) })).max(LIMITS.facts),
+    facts: z.array(z.object({ id, at: time, text: z.string().max(LIMITS.factLength), shareable: z.boolean() })).max(LIMITS.facts),
   }),
   inventory: z.object({
     materials: recordOf(MATERIAL_IDS, z.number().int().min(0).max(999)),
@@ -117,19 +168,6 @@ export const SaveSchema = z.object({
       .max(KEEPSAKE_IDS.length),
   }),
   unlocks: z.object({ traits: z.array(traitId).max(64), owned: z.array(traitId).max(64) }),
-  appearanceHistory: z.array(AppearanceSchema).max(LIMITS.appearanceHistory),
-  memories: z.array(MemorySchema).max(LIMITS.memories),
-  chat: z
-    .array(
-      z.object({
-        id,
-        at: time,
-        role: z.enum(CHAT_ROLES),
-        text: z.string().max(LIMITS.chatMessageLength),
-        source: z.enum(['player', 'ai', 'authored']),
-      }),
-    )
-    .max(LIMITS.chat),
   diary: z
     .array(
       z.object({
@@ -157,16 +195,6 @@ export const SaveSchema = z.object({
     diaryEntries: count,
     bestScore: recordOf(ROUTE_IDS, count),
   }),
-  daily: z.object({
-    day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    personalityDelta: z.object({
-      curiosity: z.number().finite().min(-100).max(100),
-      confidence: z.number().finite().min(-100).max(100),
-      playfulness: z.number().finite().min(-100).max(100),
-    }),
-    careLog: z.object(Object.fromEntries(CARE_ACTIONS.map((a) => [a, careLog])) as Record<(typeof CARE_ACTIONS)[number], typeof careLog>),
-    chatBond: z.number().finite().min(0).max(100),
-  }),
   claimedRuns: z.array(id).max(LIMITS.claimedRuns),
   settings: SettingsSchema,
 });
@@ -189,15 +217,29 @@ export function validateSave(value: unknown): { ok: true; save: SaveData } | { o
 
 /** Cross-field rules a schema alone can't express. */
 function checkInvariants(save: SaveData): string | null {
-  if (save.onboarding.step === 'done' && !save.creature) return 'Save says onboarding is complete but has no creature.';
+  if (save.onboarding.step === 'done' && !save.kinlings.length) return 'Save says onboarding is complete but has no kinling.';
+  const kinlingIds = new Set(save.kinlings.map((k) => k.id));
+  if (kinlingIds.size !== save.kinlings.length) return 'Save lists the same kinling twice.';
+  if (kinlingIds.has(PLAYER_ID)) return 'Save has a kinling with a reserved id.';
+  if (save.kinlings.length ? !kinlingIds.has(save.activeKinlingId ?? '') : save.activeKinlingId !== null) return 'Save selects a kinling that does not exist.';
+  const pairs = new Set<string>();
+  for (const f of save.feelings) {
+    if (!kinlingIds.has(f.from) || f.from === f.to || !(f.to === PLAYER_ID || kinlingIds.has(f.to))) return 'Save has a feeling about someone who does not exist.';
+    if (f.to === PLAYER_ID && f.warmth < 0) return 'Save has a kinling with negative warmth toward the player.';
+    const pair = `${f.from}>${f.to}`;
+    if (pairs.has(pair)) return 'Save lists the same feeling twice.';
+    pairs.add(pair);
+  }
+  const memoryIds = save.kinlings.flatMap((k) => k.memories.map((m) => m.id));
+  if (new Set(memoryIds).size !== memoryIds.length) return 'Save lists the same memory twice.';
   const ids = save.inventory.keepsakes.map((k) => k.id);
   if (new Set(ids).size !== ids.length) return 'Save lists the same keepsake twice.';
   const unlocked = new Set(save.unlocks.traits);
   if (save.unlocks.owned.some((t) => !unlocked.has(t))) return 'Save owns a trait that was never unlocked.';
-  if (save.creature) {
-    const worn = wornTraits(save.creature.appearance).filter((t) => !t.startsWith('shape.'));
+  for (const k of save.kinlings) {
+    const worn = wornTraits(k.appearance).filter((t) => !t.startsWith('shape.'));
     const locked = worn.find((t) => !unlocked.has(t));
-    if (locked) return `Save shows the creature wearing a feature that was never unlocked (${locked}).`;
+    if (locked) return `Save shows ${k.name || 'a kinling'} wearing a feature that was never unlocked (${locked}).`;
   }
   return null;
 }

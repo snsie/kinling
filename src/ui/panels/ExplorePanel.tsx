@@ -8,6 +8,7 @@ import { ROUTE_IDS } from '../../game/types';
 import { ItemIcon } from '../../render/ItemIcon';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
+import { activeKinling } from '../../game/state';
 
 const ROUTE_IMAGES: Record<RouteId, string> = {
   'garden-path': './images/route-garden.jpg',
@@ -16,7 +17,7 @@ const ROUTE_IMAGES: Record<RouteId, string> = {
 };
 
 export function ExplorePanel({ save, onStart }: { save: SaveData; onStart: (route: RouteId) => void }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const paddle = getTrait('tail.paddle');
   return (
     <div className="panel explore">

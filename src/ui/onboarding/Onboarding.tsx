@@ -2,7 +2,7 @@
 // first care → a short garden walk with a guaranteed first keepsake.
 // The model downloads in the background; every step works without it.
 import { useEffect, useRef, useState } from 'react';
-import { doCare, finishAdventure, presentFeedback } from '../../app/actions';
+import { doCare, finishAdventure, leaveEggForLater, presentFeedback } from '../../app/actions';
 import { cancelDownload, disableAi, enableAndLoad, useAiStatus } from '../../app/aiControl';
 import { playSfx } from '../../app/sfx';
 import { store } from '../../app/store';
@@ -29,7 +29,8 @@ import { Icon } from '../icons';
 import { Minigame } from '../Minigame';
 import { Kinetic, useReveal } from '../motion';
 import { NeedsPanel } from '../Needs';
-import { Stage } from '../Stage';
+import { RoomView } from '../RoomView';
+import { activeKinling } from '../../game/state';
 
 const STEPS: { id: OnboardingStep; label: string }[] = [
   { id: 'welcome', label: 'Welcome' },
@@ -41,6 +42,9 @@ const STEPS: { id: OnboardingStep; label: string }[] = [
   { id: 'garden', label: 'Garden' },
 ];
 
+/** Steps when hatching a later egg: no welcome and no tutorial. */
+const SIBLING_STEPS = STEPS.filter((s) => s.id === 'egg' || s.id === 'customize' || s.id === 'hatch' || s.id === 'name');
+
 const NAME_IDEAS = ['Mochi', 'Pip', 'Bramble', 'Nori', 'Juniper', 'Pebble', 'Tofu', 'Biscuit', 'Fennel', 'Wren', 'Miso', 'Clover', 'Sprig', 'Puddle', 'Comet'];
 
 function go(step: OnboardingStep) {
@@ -49,7 +53,9 @@ function go(step: OnboardingStep) {
 
 export function Onboarding({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
   const step = save.onboarding.step;
-  const index = STEPS.findIndex((s) => s.id === step);
+  const sibling = save.kinlings.length > 0 && (step === 'egg' || step === 'customize' || step === 'hatch' || (step === 'name' && save.kinlings.length > 1));
+  const steps = sibling ? SIBLING_STEPS : STEPS;
+  const index = steps.findIndex((s) => s.id === step);
   const headingRef = useRef<HTMLDivElement>(null);
   useReveal(headingRef);
   useEffect(() => {
@@ -59,7 +65,7 @@ export function Onboarding({ save, reducedMotion }: { save: SaveData; reducedMot
     <main className="onboarding" id="main">
       <div className="onboarding__top">
         <ol className="steps" aria-label="Setup progress">
-          {STEPS.map((s, i) => (
+          {steps.map((s, i) => (
             <li key={s.id} className={`steps__item ${i < index ? 'steps__item--done' : ''} ${i === index ? 'steps__item--now' : ''}`} aria-current={i === index ? 'step' : undefined}>
               <span className="steps__dot" aria-hidden="true" />
               <span className="steps__label">{s.label}</span>
@@ -70,10 +76,10 @@ export function Onboarding({ save, reducedMotion }: { save: SaveData; reducedMot
       </div>
       <div ref={headingRef} className="onboarding__body">
         {step === 'welcome' && <WelcomeStep reducedMotion={reducedMotion} />}
-        {step === 'egg' && <EggStep reducedMotion={reducedMotion} current={save.onboarding.egg} />}
+        {step === 'egg' && <EggStep reducedMotion={reducedMotion} current={save.onboarding.egg} sibling={sibling} />}
         {step === 'customize' && <CustomizeStep save={save} reducedMotion={reducedMotion} />}
         {step === 'hatch' && <HatchStep save={save} reducedMotion={reducedMotion} />}
-        {step === 'name' && <NameStep save={save} reducedMotion={reducedMotion} />}
+        {step === 'name' && <NameStep save={save} reducedMotion={reducedMotion} sibling={sibling} />}
         {step === 'firstCare' && <FirstCareStep save={save} reducedMotion={reducedMotion} />}
         {step === 'garden' && <GardenStep save={save} reducedMotion={reducedMotion} />}
       </div>
@@ -222,13 +228,17 @@ const EGG_IMAGES: Record<EggType, string> = {
   celestial: './images/egg-celestial.jpg',
 };
 
-function EggStep({ reducedMotion: _reducedMotion, current }: { reducedMotion: boolean; current: EggType | null }) {
+function EggStep({ reducedMotion: _reducedMotion, current, sibling }: { reducedMotion: boolean; current: EggType | null; sibling: boolean }) {
   return (
     <section className="ob-card">
       <h1 tabIndex={-1}>
-        <Kinetic text="Choose an egg" />
+        <Kinetic text={sibling ? 'A new egg!' : 'Choose an egg'} />
       </h1>
-      <p className="lead">Each egg starts with different features and favorite things. Any kinling can still evolve in any direction later.</p>
+      <p className="lead">
+        {sibling
+          ? 'What kind of kinling will join the hollow? Each egg starts with its own features and tastes, and even two from the same egg turn out a little different.'
+          : 'Each egg starts with different features and favorite things. Any kinling can still evolve in any direction later.'}
+      </p>
       <div className="egg-grid">
         {EGG_TYPES.map((egg) => {
           const def = EGGS[egg];
@@ -254,9 +264,15 @@ function EggStep({ reducedMotion: _reducedMotion, current }: { reducedMotion: bo
         })}
       </div>
       <div className="row">
-        <button className="btn btn--ghost" onClick={() => go('welcome')}>
-          Back
-        </button>
+        {sibling ? (
+          <button className="btn btn--ghost" onClick={leaveEggForLater}>
+            Not now
+          </button>
+        ) : (
+          <button className="btn btn--ghost" onClick={() => go('welcome')}>
+            Back
+          </button>
+        )}
       </div>
     </section>
   );
@@ -439,8 +455,8 @@ function HatchStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boo
   );
 }
 
-function NameStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
-  const c = save.creature!;
+function NameStep({ save, reducedMotion, sibling }: { save: SaveData; reducedMotion: boolean; sibling: boolean }) {
+  const c = activeKinling(save)!;
   const [name, setName] = useState('');
   const [player, setPlayer] = useState('');
   const [idea] = useState(() => NAME_IDEAS[Math.floor(Math.random() * NAME_IDEAS.length)]!);
@@ -482,10 +498,12 @@ function NameStep({ save, reducedMotion }: { save: SaveData; reducedMotion: bool
             </button>
           ))}
         </div>
-        <label className="field">
-          <span className="field-label">What should it call you? (optional)</span>
-          <input className="input" value={player} onChange={(e) => setPlayer(e.target.value)} maxLength={24} placeholder="Your name or nickname" autoComplete="off" />
-        </label>
+        {!sibling && (
+          <label className="field">
+            <span className="field-label">What should it call you? (optional)</span>
+            <input className="input" value={player} onChange={(e) => setPlayer(e.target.value)} maxLength={24} placeholder="Your name or nickname" autoComplete="off" />
+          </label>
+        )}
         <p className="hint">Names stay in this browser only.</p>
         <button className="btn btn--primary btn--big" type="submit">
           That's {name.trim() || idea}!
@@ -496,7 +514,7 @@ function NameStep({ save, reducedMotion }: { save: SaveData; reducedMotion: bool
 }
 
 function FirstCareStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const done = save.stats.feeds + save.stats.plays + save.stats.grooms + save.stats.rests > 0;
   useEffect(() => {
     if (!done) ui.say(`${c.name} is a little hungry and full of wiggles. Try a snack or a game!`, 'authored');
@@ -509,7 +527,7 @@ function FirstCareStep({ save, reducedMotion }: { save: SaveData; reducedMotion:
         </h1>
         <p className="lead">Newly hatched kinlings are hungry and playful. Feed {c.name} or play together.</p>
       </div>
-      <Stage save={save} reducedMotion={reducedMotion} />
+      <RoomView save={save} reducedMotion={reducedMotion} />
       <NeedsPanel needs={c.needs} />
       <CareBar save={save} />
       {done ? (
@@ -536,7 +554,7 @@ function FirstCareStep({ save, reducedMotion }: { save: SaveData; reducedMotion:
 }
 
 function GardenStep({ save, reducedMotion }: { save: SaveData; reducedMotion: boolean }) {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const [phase, setPhase] = useState<'intro' | 'play' | 'done'>('intro');
   const [rewards, setRewards] = useState<RewardSummary | null>(null);
   const [seed] = useState(randomSeed);

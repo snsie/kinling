@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { doCare } from '../app/actions';
 import { FOODS } from '../game/catalog';
-import { hasFood } from '../game/state';
+import { activeKinling, hasFood } from '../game/state';
 import type { FoodId, SaveData } from '../game/types';
 import { FOOD_IDS } from '../game/types';
 import { ItemIcon } from '../render/ItemIcon';
@@ -10,7 +10,7 @@ import { Icon } from './icons';
 
 export function CareBar({ save, disabled }: { save: SaveData; disabled?: boolean }) {
   const [feeding, setFeeding] = useState(false);
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const foods = FOOD_IDS.filter((f) => hasFood(save, f));
   const feed = (f: FoodId) => {
     doCare('feed', f);

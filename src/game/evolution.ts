@@ -5,7 +5,7 @@ import { evolutionLine, revertLine } from './dialogue';
 import type { Outcome } from './outcome';
 import { rejected } from './outcome';
 import { addBond, refreshProgress } from './progress';
-import { canAfford, draft, LIMITS, missingFor, recordEvent, recordMemory, spend, sumCosts } from './state';
+import { canAfford, draft, kinlingById, LIMITS, missingFor, recordEvent, recordMemory, spend, sumCosts } from './state';
 import type { TraitDef } from './traits';
 import { describeRequirement, isTraitId, requirementMet, TRAIT_BY_ID, traitLabel, withTrait, wornTraits } from './traits';
 import type { Appearance, ColorId, MaterialCost, Proportions, SaveData, TraitId, TraitSlot } from './types';
@@ -118,9 +118,9 @@ function sameAppearance(a: Appearance, b: Appearance): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-export function planEvolution(save: SaveData, request: EvolutionRequest): EvolutionPlan {
-  const c = save.creature;
-  if (!c) throw new Error('No creature');
+export function planEvolution(save: SaveData, kinlingId: string, request: EvolutionRequest): EvolutionPlan {
+  const c = kinlingById(save, kinlingId);
+  if (!c) throw new Error('No such kinling');
   const base = c.appearance;
   let preview: Appearance = { ...base, proportions: { ...base.proportions } };
   const accepted: PlannedChange[] = [];
@@ -204,18 +204,18 @@ export function planEvolution(save: SaveData, request: EvolutionRequest): Evolut
 }
 
 /** Apply a request. The plan is always recomputed here; a caller-supplied preview is never trusted. */
-export function applyEvolution(save: SaveData, request: EvolutionRequest, now: number): Outcome {
-  if (!save.creature) return rejected(save, 'There is no creature yet.');
-  const plan = planEvolution(save, request);
+export function applyEvolution(save: SaveData, kinlingId: string, request: EvolutionRequest, now: number): Outcome {
+  if (!kinlingById(save, kinlingId)) return rejected(save, 'There is no kinling here.');
+  const plan = planEvolution(save, kinlingId, request);
   if (!plan.changed) return rejected(save, 'Nothing would change.');
   if (!plan.affordable) return rejected(save, 'Not enough materials for this change yet.');
 
   const s = draft(save);
-  const c = s.creature!;
+  const c = kinlingById(s, kinlingId)!;
   const bondBefore = c.bond;
   spend(s.inventory, plan.cost);
-  s.appearanceHistory.push(c.appearance);
-  if (s.appearanceHistory.length > LIMITS.appearanceHistory) s.appearanceHistory.splice(0, s.appearanceHistory.length - LIMITS.appearanceHistory);
+  c.appearanceHistory.push(c.appearance);
+  if (c.appearanceHistory.length > LIMITS.appearanceHistory) c.appearanceHistory.splice(0, c.appearanceHistory.length - LIMITS.appearanceHistory);
   c.appearance = plan.preview;
 
   const firstTimeTraits = plan.accepted.filter((a) => !a.remove && !a.owned).map((a) => a.trait);
@@ -225,7 +225,7 @@ export function applyEvolution(save: SaveData, request: EvolutionRequest, now: n
   // re-applying can never be farmed.
   if (firstTimeTraits.length) {
     c.needs.happiness = clamp(c.needs.happiness + 6, 0, 100);
-    addBond(s, 2 * firstTimeTraits.length);
+    addBond(c, 2 * firstTimeTraits.length);
   }
 
   const parts = plan.accepted.map((a) => (a.remove ? `let go of ${a.name.toLowerCase()}` : `grew ${a.name.toLowerCase()}`));
@@ -238,7 +238,7 @@ export function applyEvolution(save: SaveData, request: EvolutionRequest, now: n
   recordEvent(s, 'evolved', desc, now);
   if (firstTimeTraits.length) {
     recordMemory(
-      s,
+      c,
       {
         kind: 'evolution',
         text: `I changed! I ${parts.join(' and ')}.`,
@@ -248,7 +248,7 @@ export function applyEvolution(save: SaveData, request: EvolutionRequest, now: n
       now,
     );
   }
-  const progress = refreshProgress(s, now, bondBefore);
+  const progress = refreshProgress(s, c, now, bondBefore);
   return {
     save: s,
     feedback: {
@@ -264,12 +264,13 @@ export function applyEvolution(save: SaveData, request: EvolutionRequest, now: n
 }
 
 /** Undo the last appearance change. Nothing is refunded and nothing is re-awarded. */
-export function revertAppearance(save: SaveData, now: number): Outcome {
-  if (!save.creature) return rejected(save, 'There is no creature yet.');
-  if (save.appearanceHistory.length === 0) return rejected(save, 'There is no earlier look to return to.');
+export function revertAppearance(save: SaveData, kinlingId: string, now: number): Outcome {
+  const k = kinlingById(save, kinlingId);
+  if (!k) return rejected(save, 'There is no kinling here.');
+  if (k.appearanceHistory.length === 0) return rejected(save, 'There is no earlier look to return to.');
   const s = draft(save);
-  const c = s.creature!;
-  const previous = s.appearanceHistory.pop()!;
+  const c = kinlingById(s, kinlingId)!;
+  const previous = c.appearanceHistory.pop()!;
   c.appearance = previous;
   const desc = `${c.name} went back to an earlier look.`;
   recordEvent(s, 'reverted', desc, now);

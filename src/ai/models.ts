@@ -29,6 +29,14 @@ export const MODELS: Record<ModelId, ModelInfo> = {
     description: 'Faster and lighter for older devices, but simpler replies. About 350 MB to download.',
     f32Fallback: 'Qwen3-0.6B-q4f32_1-MLC',
   },
+  'Qwen3-4B-q4f16_1-MLC': {
+    id: 'Qwen3-4B-q4f16_1-MLC',
+    label: 'Qwen3 4B (best quality)',
+    downloadMB: 2300,
+    vramMB: 3440,
+    description: 'Smartest conversation and memory, for stronger graphics cards. About 2.3 GB to download.',
+    f32Fallback: 'Qwen3-4B-q4f32_1-MLC',
+  },
 };
 
 export function formatMB(mb: number): string {

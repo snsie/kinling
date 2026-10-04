@@ -5,10 +5,11 @@ import { COLORS, FOODS, KEEPSAKES, MATERIALS, ROUTES } from '../game/catalog';
 import { routeAvailability } from '../game/adventure';
 import { deriveMood, MOOD_TEXT, needStatus } from '../game/needs';
 import { lifeStageFor } from '../game/stage';
-import { personalityWords } from '../game/state';
-import { canWriteDiary, relevantFacts, relevantMemories } from '../game/social';
+import { activeKinling, personalityWords } from '../game/state';
+import { canWriteDiary, CHAT_CONTEXT_MESSAGES, relevantFacts, relevantMemories } from '../game/social';
+import { INTENTS, type ReplyBudget } from '../game/intent';
 import { describeAppearance, TRAITS, wornTraits } from '../game/traits';
-import type { FoodId, GameEvent, MaterialId, SaveData } from '../game/types';
+import type { ChatMessage, FoodId, GameEvent, MaterialId, SaveData } from '../game/types';
 import { NEED_KEYS, ROUTE_IDS } from '../game/types';
 import { KEEP_SLOTS } from '../game/evolution';
 
@@ -18,16 +19,26 @@ const STAGE_VOICE = {
   grown: 'You are fully grown: warm, thoughtful and still playful.',
 } as const;
 
+// Style samples only. They avoid inventory, places and events that may not
+// exist yet, so copying them cannot invent anything.
+const STAGE_EXAMPLES = {
+  hatchling: ['"Do you like rain?" -> "Rain! Tap-tap on the window! I like watching the drops race."', '"I had a long day." -> "Long days are big. Want to sit with me on the rug for a bit?"'],
+  sprout: ['"Do you like rain?" -> "I love it! The window gets all sparkly and the garden smells green. Do you like puddles too?"', '"I had a long day." -> "Oh no, a long one? Tell me the best part and the worst part, I want both!"'],
+  grown: ['"Do you like rain?" -> "I do. The rain makes the hollow feel extra snug, and I like listening to it on the window with you."', '"I had a long day." -> "That sounds tiring. I am glad you came by. Want to tell me about it, or just rest here a while?"'],
+} as const;
+
+const DEFAULT_LENGTH = { sentences: 2, words: 40 };
+
 /** Activities the creature can genuinely suggest right now. */
 export function availableActivities(save: SaveData): string[] {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   const list: string[] = [];
   const foods = (Object.keys(FOODS) as FoodId[]).filter((f) => FOODS[f].unlimited || save.inventory.foods[f] > 0).map((f) => FOODS[f].name);
   if (c.needs.hunger < 95) list.push(`eat a snack (${foods.join(', ')})`);
   list.push('get brushed', 'take a nap');
   if (c.needs.energy >= 10) list.push('play chase');
   for (const r of ROUTE_IDS) {
-    const a = routeAvailability(save, r);
+    const a = routeAvailability(save, r, c);
     if (a.available) list.push(`explore the ${ROUTES[r].name}`);
   }
   if (canWriteDiary(save)) list.push('write in the diary');
@@ -51,13 +62,13 @@ function eventLines(events: GameEvent[]): string {
   return events.length ? events.map((e) => `- ${e.text}`).join('\n') : '- (nothing yet today)';
 }
 
-export function creatureSystemPrompt(save: SaveData, query: string, now: number): string {
-  const c = save.creature!;
+export function creatureSystemPrompt(save: SaveData, query: string, now: number, length: Pick<ReplyBudget, 'sentences' | 'words'> = DEFAULT_LENGTH): string {
+  const c = activeKinling(save)!;
   const stage = lifeStageFor(c.bond);
   const player = save.player.name ?? 'your friend';
   const mood = deriveMood(c.needs);
   const needs = NEED_KEYS.map((k) => `${k} ${needStatus(k, c.needs[k]).toLowerCase()}`).join(', ');
-  const memories = relevantMemories(save.memories, query, now, 4);
+  const memories = relevantMemories(c.memories, query, now, 4);
   const facts = relevantFacts(save.player.facts, query, 4);
   const recent = save.events.filter((e) => e.kind !== 'diary').slice(-5);
   const prefs: string[] = [];
@@ -74,23 +85,26 @@ export function creatureSystemPrompt(save: SaveData, query: string, now: number)
     inventoryLine(save),
     facts.length ? `Things ${player} told you (their words):\n${facts.map((f) => `- ${f.text}`).join('\n')}` : '',
     memories.length ? `Your memories:\n${memories.map((m) => `- ${m.text}`).join('\n')}` : '',
+    c.chatSummary ? `Notes on earlier chats with ${player} (may be a little fuzzy):\n${c.chatSummary.text}` : '',
     `Recent happenings:\n${eventLines(recent)}`,
     `Things you could do together now: ${availableActivities(save).join('; ')}.`,
     'How to talk:',
     `- Speak as ${c.name} in first person, warm and playful, with concrete details from your world (the rug, the window, the garden, the pond, your keepsakes).`,
-    '- Reply in one or two short sentences, under 40 words. Plain text only: no lists, no markdown, no emojis.',
+    `- Reply in ${length.sentences > 2 ? 'one to three' : 'one or two'} short sentences, under ${length.words} words. Plain text only: no lists, no markdown, no emojis.`,
+    `- If ${player} asks a question, answer it first, then you can add a small thought or question of your own.`,
     '- Only mention items, places, memories and events listed above. Never invent possessions, rewards, places or past events.',
     '- If you suggest something to do, choose from the list of things you could do together.',
     '- Never guilt-trip, never ask the player to come back or stay, and never claim to be sick, hurt, lonely or suffering. Your needs are gentle feelings like being peckish or sleepy.',
     '- You cannot give items, change your own body or change the game. If asked, say you would love to and let your friend do it.',
+    `Examples of your voice (style only, these did not happen):\n${STAGE_EXAMPLES[stage].map((e) => `- ${e}`).join('\n')}`,
   ]
     .filter(Boolean)
     .join('\n');
 }
 
-export function chatMessages(save: SaveData, playerText: string, now: number): ChatCompletionMessageParam[] {
-  const history = save.chat.slice(-6);
-  const msgs: ChatCompletionMessageParam[] = [{ role: 'system', content: creatureSystemPrompt(save, playerText, now) }];
+export function chatMessages(save: SaveData, playerText: string, now: number, length?: Pick<ReplyBudget, 'sentences' | 'words'>): ChatCompletionMessageParam[] {
+  const history = activeKinling(save)!.chat.slice(-CHAT_CONTEXT_MESSAGES);
+  const msgs: ChatCompletionMessageParam[] = [{ role: 'system', content: creatureSystemPrompt(save, playerText, now, length) }];
   // Alternate roles, starting with the player, merging consecutive messages.
   const turns: { role: 'user' | 'assistant'; content: string }[] = [];
   for (const m of history) {
@@ -120,7 +134,7 @@ export function greetingMessages(save: SaveData, now: number): ChatCompletionMes
 }
 
 export function diaryMessages(save: SaveData, events: GameEvent[]): ChatCompletionMessageParam[] {
-  const c = save.creature!;
+  const c = activeKinling(save)!;
   return [
     {
       role: 'system',
@@ -132,6 +146,86 @@ export function diaryMessages(save: SaveData, events: GameEvent[]): ChatCompleti
       ].join('\n'),
     },
     { role: 'user', content: `Today's events:\n${eventLines(events)}\nWrite today's diary entry, starting with "Dear diary,".` },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Background helpers: conversation notes and suggested facts
+
+function transcriptLines(save: SaveData, messages: ChatMessage[]): string {
+  const player = save.player.name ?? 'Player';
+  const name = activeKinling(save)!.name;
+  return messages.map((m) => `${m.role === 'player' ? player : name}: ${m.text}`).join('\n');
+}
+
+export function summaryMessages(save: SaveData, messages: ChatMessage[]): ChatCompletionMessageParam[] {
+  const c = activeKinling(save)!;
+  const player = save.player.name ?? 'the player';
+  return [
+    {
+      role: 'system',
+      content: [
+        `You keep short notes about the friendship between ${player} and ${c.name}, a small creature. Update the notes with the new conversation.`,
+        `- Keep what still matters from the old notes and add what is new: topics, plans, feelings and things ${player} shared.`,
+        '- Only write what was actually said. Leave out greetings and small talk.',
+        `- At most 4 short sentences in third person, like "${player} told ${c.name} about their new puppy." Plain text, no lists.`,
+      ].join('\n'),
+    },
+    { role: 'user', content: `Old notes: ${c.chatSummary?.text ?? '(none yet)'}\n\nNew conversation:\n${transcriptLines(save, messages)}\n\nUpdated notes:` },
+  ];
+}
+
+export function factSchema(): string {
+  return JSON.stringify({ type: 'object', properties: { fact: { type: 'string' } }, required: ['fact'] });
+}
+
+export function factMessages(text: string): ChatCompletionMessageParam[] {
+  return [
+    {
+      role: 'system',
+      content: [
+        'Find one lasting fact the player shared about themselves: likes, dislikes, family, pets, hobbies, plans or important days.',
+        'Write it in first person using the player\'s own words, under 15 words. Use "" when there is no lasting fact: questions, greetings, passing moods, instructions, or things about the creature.',
+        'Examples:',
+        '"my sister turns ten on friday so we are baking a cake" -> {"fact":"My sister turns ten on Friday"}',
+        '"I love rainy days, they are so cozy" -> {"fact":"I love rainy days"}',
+        '"i\'m kind of tired today" -> {"fact":""}',
+        '"you are so cute" -> {"fact":""}',
+      ].join('\n'),
+    },
+    { role: 'user', content: text },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Message routing
+
+export function intentSchema(): string {
+  return JSON.stringify({ type: 'object', properties: { intent: { type: 'string', enum: [...INTENTS] } }, required: ['intent'] });
+}
+
+/** Deliberately small (no game state) so routing stays fast. */
+export function intentMessages(text: string): ChatCompletionMessageParam[] {
+  return [
+    {
+      role: 'system',
+      content: [
+        'Classify a message a player sent to their small pet creature. Answer as JSON.',
+        '- care: the player wants the creature to do something now: eat, nap, get brushed or bathed, play, or explore the garden or pond.',
+        '- evolve: the player wants to change how the creature looks: fur color, ears, tail, spots or stripes, wings, fins, horns, glow, or body shape.',
+        '- chat: everything else, including questions, compliments, feelings and stories.',
+        'Examples:',
+        '"maybe a nap would help" -> {"intent":"care"}',
+        '"let\'s go see the frogs" -> {"intent":"care"}',
+        '"wings would really suit you" -> {"intent":"evolve"}',
+        '"I wish you had stripes" -> {"intent":"evolve"}',
+        '"can you swim?" -> {"intent":"chat"}',
+        '"your ears are so cute" -> {"intent":"chat"}',
+        '"you look sleepy" -> {"intent":"chat"}',
+        '"what is your favorite color?" -> {"intent":"chat"}',
+      ].join('\n'),
+    },
+    { role: 'user', content: text },
   ];
 }
 
@@ -161,7 +255,7 @@ export function evolutionSchema(): string {
 }
 
 export function evolutionMessages(save: SaveData, request: string, mode: 'evolve' | 'create'): ChatCompletionMessageParam[] {
-  const c = save.creature;
+  const c = activeKinling(save);
   const appearance = c ? c.appearance : save.onboarding.draftAppearance!;
   const unlocked = new Set(save.unlocks.traits);
   const catalog = TRAITS.map((t) => {
