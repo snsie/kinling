@@ -95,8 +95,9 @@ async function axe(label) {
 await step('loads and explains AI is unavailable without WebGPU', async () => {
   await page.goto(BASE);
   await page.getByRole('heading', { name: 'Welcome to Kinling' }).waitFor();
-  const txt = await page.textContent('main');
-  expect(/isn't available in this browser/.test(txt), 'no WebGPU notice');
+  // The WebGPU check is async; wait for its result rather than reading the page immediately.
+  const notice = await page.getByText("isn't available in this browser").waitFor({ timeout: 10000 }).then(() => true, () => false);
+  expect(notice, 'no WebGPU notice');
   await shot(page, 'welcome');
   const v = await axe('welcome');
   return `axe violations: ${v}`;
