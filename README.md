@@ -70,13 +70,16 @@ Deploying is just static hosting of `dist/`. The build uses relative paths, so i
   - Ask it to do things ("you should eat a dewberry and take a nap"): suggested actions appear as buttons you confirm.
   - Describe a new look: a "Preview in Evolve" button appears.
   - Say "remember that…" to save a fact about yourself.
-- **Diary:** once a few things have happened, write today's entry, based only on recorded events. The diary tab also lists the kinling's **memories** (pin or forget them) and the **things you told it**.
+  - It **remembers your conversations** on its own, no button needed: tell it about your new puppy or a recital you're nervous about, and days later it can answer "what's my dog's name?" or ask how the recital went. What you say also shapes it over time (see [Memory and personality](#memory-and-personality)).
+- **Diary:** once a few things have happened, write today's entry, based only on recorded events. The diary tab also lists the kinling's **memories** (pin or forget them; memories that are shaping its personality say so) and the **things you told it**.
 
 ### Growth systems (all deterministic and bounded)
 | System | How it changes |
 | --- | --- |
 | Needs (0–100) | Slow decay while playing (4–6/h). **Absence is forgiving:** at most 10 hours are ever applied, needs never drop below 30–45 from absence, and energy *recovers* while you're away (it naps). Nothing ever dies or resets. |
 | Personality: curiosity, confidence, playfulness (0–100) | Small nudges from meaningful activities: new routes → curiosity; good hauls → confidence; play and adventures → playfulness. Each trait moves at most ±6 per day. |
+| Personality from memories | When the kinling reflects on what you've said (cheering it on → braver, wondering about things together → more curious, jokes → more playful, unkind words → shyer, "be careful" → more careful, quiet moments → calmer). At most 3 points per reflection and 4 per trait per day, and never more than 30 from how it hatched. Each change is remembered with its reason. |
+| Feelings toward you | Kind words, encouragement and being confided in raise warmth and trust; unkind words lower them. At most +3/−3 per message and 6 per day, and never below 0. |
 | Affinities: woodland, aquatic (0–100) | Garden trips and woodland snacks raise woodland affinity; pond trips and aquatic snacks raise aquatic affinity. Each trip adds up to +10, based on score. |
 | Bond → life stage | Care, adventures, first-time evolutions and diary entries raise bond. Hatchling → Sprout at 60 → Grown at 200. |
 | Preferences | Each egg has a hidden favorite food, a disliked food and a favorite place, discovered through play. |
@@ -101,10 +104,11 @@ Wings and a back fin both sit on the back, so they can't be worn together; the g
 ## Saves and storage
 
 - **Where:** IndexedDB in *this* browser, through Dexie. Nothing is uploaded. Clearing site data, using a private window or switching browsers or devices means the save isn't there. Use **Settings → Export backup** to keep a copy or move it.
-- **What is saved** (schema version 2, validated with Zod on every load and import):
-  - creature id, name, appearance, personality, needs, preferences, affinities and bond
+- **What is saved** (schema version 5, validated with Zod on every load and import):
+  - each kinling's id, name, appearance, personality (and how it hatched), needs, preferences, affinities and bond
   - inventory, unlocks and owned traits, appearance history
-  - selected memories (≤80), bounded chat (≤40), diary (≤60), recent events
+  - memories per kinling (≤200, each with how it felt and how it nudges personality), bounded chat (≤40), diary (≤60), recent events
+  - feelings between kinlings and toward the player, and overheard kinling conversations
   - player name and player-provided facts (stored separately from memories)
   - timestamps, settings, the claimed-adventure list and the schema version
 - **Autosave** runs about 0.6 s after any meaningful change, plus periodically for time passing and on tab hide or close. The top bar shows *Saved / Saving… / Not saved*.
@@ -129,7 +133,7 @@ Wings and a back fin both sit on the back, so they can't be worn together; the g
 - **Requests:**
   - Thinking mode is disabled (`extra_body.enable_thinking: false`). One request runs at a time.
   - Output limits are modest (48–200 tokens). Replies are cleaned to 1–2 sentences, and a tone filter replaces guilt-tripping or suffering claims with authored lines.
-  - Every request carries a compact snapshot: creature state, mood, appearance, inventory, keepsake-relevant memories, player facts, recent events, the activities actually available and the last few chat messages. The model is never relied on to remember anything between requests.
+  - Every request carries a compact snapshot: who the kinling is (personality as speaking style, how it has been changing, how it feels about you and its siblings), mood, appearance, recent events, the last few chat messages, and the memories and facts this message brings to mind. The inventory and the list of available activities are included only when the message is about belongings or plans. The model is never relied on to remember anything between requests.
 - **Structured proposals:**
   - Appearance and care-instruction translation use WebLLM JSON-schema output (`response_format: json_object` with an enum of catalog ids).
   - The output is then extracted defensively and validated with **Zod**. Unknown ids are dropped, and the result goes through the same game-rule validation as the visual editor (unlocks, compatibility, costs, "keep" constraints).
@@ -144,17 +148,32 @@ Wings and a back fin both sit on the back, so they can't be worn together; the g
 
 ---
 
+## Memory and personality
+
+Kinlings remember what you tell them, bring it up when it matters, and slowly become who those memories make them. Code decides every effect; the model only proposes wording.
+
+- **Remembering (appraisal), automatically.** After each reply, every message you sent becomes at most one memory, with a feeling (−2 hurt … +2 loved) and a small personality *influence*; there is nothing to click. (The model's "Should Mochi remember…?" fact suggestion is skipped for a message that already became a memory.) Rules always run, so this works with AI off. When the model is free it may write a better memory as JSON, but it is kept only if at least 80% of its words are your own (plus names and words like "told" or "said"). Questions with nothing to remember are never stored, your "I/my" is retold as "they/their" so the kinling can't mistake your life for its own, and repeating something within a few hours strengthens the existing memory instead of adding a copy. If the model is busy with your next message, appraisal waits and picks up where it left off.
+- **Recall (retrieval-augmented replies).** For each message, `src/game/recall.ts` ranks the kinling's memories and your facts: BM25 word matching (with singulars, 4-letter stems and small concept groups, so "what weather do I like?" finds "I love rainy days"), the previous turn for follow-ups at reduced weight, a boost for siblings named in the message, then importance, recency and pins. Near-duplicates are skipped (maximal marginal relevance). Up to four memories and three facts, each with a time label ("yesterday"), go into a private note placed right next to your message, where a small model actually uses them. A question about yourself also gets a short hint to answer with "you".
+- **Smarter memory search (optional).** Settings → On-device AI → *Smarter memory search* adds `snowflake-arctic-embed-s` (about 135 MB, ~240 MB GPU memory) in its own worker, so it can be turned on or off without reloading the chat model. Its sentence embeddings add meaning-level matches to the word matching; if it is slow or fails, recall quietly uses words alone. Like the chat model, it is never downloaded without your explicit choice.
+- **Reflection (personality change).** When enough influence piles up (a clear push on one trait, several moments, or a quiet spell of six hours), the kinling reflects: personality moves within the limits in the growth table, the kinling remembers noticing the change and why ("Lately I've been feeling braver. I keep thinking about when Sam said I was brave at the pond."), a toast tells you, and the diary can mention it. Forgetting a memory before the kinling reflects on it means it won't shape the kinling.
+- **Showing it.** The Bag's *About* card shows the latest reflection and how far each trait has moved since hatching; the Diary marks memories that may change, or already changed, the kinling; and the chat prompt describes personality as a way of talking ("You are shy: you speak softly and sometimes hesitate").
+- **Reply hygiene for small models.** A trailing activity offer nobody asked for ("Want to play chase?") is dropped, a closing line repeated from a recent reply is dropped, and a reply that repeats a recent one, parrots you or copies a style example is regenerated once (then falls back to authored lines). The model-written conversation notes keep only sentences grounded in what you said.
+- **Offline.** With AI off, replies still use memory ("I remember! You told me "I love rainy days"."), respond to worries and encouragement, and sound like the kinling's personality.
+
+---
+
 ## Project structure
 
 ```
 src/
   game/          Pure, typed game rules (no React): types, catalog, traits & unlocks, needs & absence,
                  care, adventure rewards, evolution planning/apply/revert, onboarding, memories/diary/chat,
-                 authored dialogue, offline request parser, care-proposal validation
+                 recall (retrieval), appraisal and reflection, persona, authored dialogue, offline request
+                 parser, care-proposal validation
   minigame/      Deterministic collection minigame engine (seeded RNG, arenas, grid pathfinding)
   persistence/   Zod save schema, migrations, Dexie storage with revision checks + backup, export/import, tab lock
-  ai/            WebLLM worker, engine service (single-flight, cancel, errors), prompts, Zod proposal parsing,
-                 companion façade with authored fallbacks
+  ai/            WebLLM worker, engine service (single-flight, cancel, errors), embedding service (memory search),
+                 prompts, Zod proposal parsing, companion façade with authored fallbacks
   app/           Store (autosave, status, tabs), controller actions, AI wiring, UI state, sound, motion preference
   render/        Procedural layered-SVG art: Creature (traits + animations), Egg, Habitat, ItemIcon, ArenaArt
   ui/            React interface: onboarding, home stage, needs, care, tabs (Talk/Explore/Bag/Evolve/Diary/Settings),
@@ -164,7 +183,8 @@ src/
   sw/            Service-worker template (precache list generated at build time by vite.config.ts)
   dev/           Art preview harnesses (preview-creature.html, preview-scenes.html; not in the production build)
 tests/           Vitest unit tests
-scripts/         Playwright end-to-end verification (e2e.mjs, e2e-ai.mjs)
+scripts/         Playwright end-to-end verification (e2e.mjs, e2e-ai.mjs) and real-model evaluations
+                 (eval-chat.mjs, eval-memory.mjs)
 ```
 
 All artwork is procedural SVG drawn in code. There are no image files apart from the small app icon, and sounds are synthesized with WebAudio.
@@ -243,6 +263,23 @@ Verified on 2 Oct 2026: Linux (RHEL 9) with an NVIDIA L4 GPU, Node 20.20, Chromi
 - **Diary:** *"Dear diary, I'm Comet, and today I hatched from a celestial egg. Sam named me Comet, and I ate a dewberry. I explored the Garden Path, found a tiny acorn cap, and kept it as a keepsake."*
 - **Model switch:** switching to Qwen3 0.6B replaced the worker (one model at a time) and chatted successfully.
 - **No silent fallbacks:** the run fails if any request falls back while the model is loaded, and none did.
+
+### Memory and personality (`scripts/eval-memory.mjs`, headed Chromium, Windows 11, RTX 5070 Ti)
+
+Verified on 4 Oct 2026. The script plays a scripted chat through the app's real `sendChat` path: the player shares news (a puppy named Biscuit, a recital they're nervous about, rainy days, a sister turning seven), cheers the kinling on and wonders about things with it, then makes small talk until the early messages leave the prompt window. Then it asks recall questions.
+
+| | Before (`main`) | After, Qwen3 1.7B | After, Qwen3 4B |
+| --- | --- | --- | --- |
+| Recall answers with the right fact | 0/5 (1 copied the style example, 2 invented) | 5/5 | 5/5 |
+| …answered from the player's side ("*your* dog", "*you* like rain") | – | 2/3 | 3/3 |
+| Memories made from the chat | 0 | 14–16, all grounded | 16 |
+| Personality change | none | confidence +3, curiosity +1, playfulness +2, each with a remembered reason | same |
+| Warmth / trust toward the player | 20 / 20 (unchanged) | 26 / 24 (daily cap) | 26 / 24 |
+| Average reply time | 1.1 s | 0.9 s | 2.0 s |
+
+- Example after: "what was I nervous about this week?" → *"You were nervous about your piano recital."* Before: *"Hunger! And the pond's cool water."*
+- `scripts/eval-chat.mjs` scores the same as `main` (routing 15/16, fact suggestions 4/7, replies 8/8); the routing miss and the three fact false positives were there before.
+- **Known limits with the 1.7B model:** it sometimes still claims the player's taste as its own ("I like rainy days") or adds small invented details. The memories it is given are correct, and the 4B model uses them reliably, so it's the better choice where the graphics card allows.
 
 ### Bugs found and fixed during verification
 - **WebLLM 0.2.85 interrupt quirk:** after a cancelled reply, non-streaming requests return `""` because a leftover interrupt flag is only cleared by streaming requests. All requests, JSON included, now stream.

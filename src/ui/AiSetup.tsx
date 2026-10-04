@@ -1,9 +1,10 @@
 // Explains the on-device model and lets the player download, cancel, retry,
 // switch or turn it off. Shared by onboarding and settings.
 import { useEffect, useState } from 'react';
+import { EMBED_DOWNLOAD_MB } from '../ai/embedder';
 import { ai } from '../ai/engine';
 import { formatMB, MODELS } from '../ai/models';
-import { cancelDownload, deleteModelFiles, disableAi, enableAndLoad, switchModel, useAiStatus } from '../app/aiControl';
+import { cancelDownload, deleteModelFiles, disableAi, enableAndLoad, setMemorySearch, switchModel, useAiStatus, useEmbedStatus } from '../app/aiControl';
 import { updateSettings, useStore } from '../app/actions';
 import type { ModelId } from '../game/types';
 import { MODEL_IDS } from '../game/types';
@@ -149,7 +150,28 @@ export function AiSetup({ compact = false }: { compact?: boolean }) {
           )}
         </div>
       )}
+      {!compact && settings?.enabled && <MemorySearchSetting on={settings.memorySearch} />}
       {support?.adapter && !compact && <p className="hint">Graphics adapter: {support.adapter}</p>}
+    </div>
+  );
+}
+
+function MemorySearchSetting({ on }: { on: boolean }) {
+  const status = useEmbedStatus();
+  return (
+    <div className="memory-search">
+      <label className="toggle">
+        <input type="checkbox" checked={on} disabled={status.kind === 'loading'} onChange={(e) => setMemorySearch(e.target.checked)} />
+        <span>Smarter memory search</span>
+      </label>
+      <p className="hint">
+        Helps your kinling recall things by meaning, not just matching words (so "I'm feeling down" brings back the rough day you told it about). Uses a
+        second small model (about {formatMB(EMBED_DOWNLOAD_MB)} to download, runs on your device).
+      </p>
+      {status.kind === 'loading' && <Progress value={status.progress} label="Memory search download and load progress" />}
+      {status.kind === 'ready' && on && <span className="pill pill--ok">Memory search ready</span>}
+      {status.kind === 'error' && <p className="notice notice--error">{status.message}</p>}
+      {status.kind === 'off' && status.note && on && <p className="notice notice--warn">{status.note}</p>}
     </div>
   );
 }

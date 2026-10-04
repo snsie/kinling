@@ -3,6 +3,7 @@
 // their turn for the single model; automatic reactions are skipped when it is
 // busy. Model output only ever becomes display text or a *proposal* that game
 // code validates.
+import { groundedSentences, mergeAppraisal, ruleAppraisal, type Appraisal } from '../game/appraisal';
 import { offlineChatReply } from '../game/dialogue';
 import { slotOf, type EvolutionRequest } from '../game/evolution';
 import { parseAppearanceRequest } from '../game/requestParser';
@@ -10,16 +11,23 @@ import type { ProposedAction } from '../game/careProposals';
 import { parseCareInstruction } from '../game/careProposals';
 import { replyBudget, ruleIntent, type Intent } from '../game/intent';
 import { authoredDiary, factIsGrounded, hasFact, mightContainFact, needsSummary, unsummarizedMessages } from '../game/social';
-import { activeKinling, LIMITS } from '../game/state';
+import { activeKinling, kinlingById, LIMITS } from '../game/state';
 import type { GameEvent, SaveData } from '../game/types';
-import { ai, AiInterruptedError } from './engine';
+import { embedder } from './embedder';
+import { ai, AiBusyError, AiInterruptedError } from './engine';
 import {
+  appraisalMessages,
+  appraisalSchema,
   careMessages,
   careSchema,
   chatMessages,
   cleanReply,
   diaryMessages,
+  dropUnaskedOffer,
+  dropRepeatedTail,
+  repeatsRecent,
   evolutionMessages,
+  exampleReplies,
   evolutionSchema,
   factMessages,
   factSchema,
@@ -29,8 +37,9 @@ import {
   reactionMessages,
   summaryMessages,
   toneIsSafe,
+  type RecallVectors,
 } from './prompts';
-import { mergeKeep, parseCareProposal, parseEvolutionProposal, parseFactProposal, parseIntent } from './proposals';
+import { mergeKeep, parseAppraisal, parseCareProposal, parseEvolutionProposal, parseFactProposal, parseIntent } from './proposals';
 
 export interface TextResult {
   text: string;
@@ -63,15 +72,49 @@ export async function routeMessage(text: string): Promise<Intent> {
   }
 }
 
+/** Every text the active kinling might recall: its memories and the player's facts. */
+function recallTexts(save: SaveData): string[] {
+  const k = activeKinling(save);
+  return k ? [...k.memories.map((m) => m.text), ...save.player.facts.map((f) => f.text)] : [];
+}
+
+/**
+ * Embeddings for memory search, when it is on. New memories are indexed on
+ * the way; if anything is slow or fails, recall quietly uses word matching.
+ */
+export async function recallVectors(save: SaveData, query: string): Promise<RecallVectors | null> {
+  if (!embedder.isReady) return null;
+  await embedder.index(recallTexts(save));
+  const q = await embedder.query(query);
+  return q ? { query: q, vectorOf: embedder.vectorOf } : null;
+}
+
+/** Background: embed memories ahead of time so the first search is quick. */
+export function warmRecall(save: SaveData): void {
+  if (embedder.isReady) void embedder.index(recallTexts(save));
+}
+
 /** Stream a reply to the player. Falls back to authored text on any problem. */
 export async function chatReply(save: SaveData, playerText: string, now: number, onText?: (t: string) => void): Promise<TextResult> {
-  const fallback = () => ({ text: offlineChatReply(save, playerText), source: 'authored' as const });
+  const fallback = () => ({ text: offlineChatReply(save, playerText, Math.random, now), source: 'authored' as const });
   if (!ai.isLoaded) return fallback();
   const budget = replyBudget(playerText);
-  const clean = (t: string) => cleanReply(t, budget.sentences, budget.maxChars);
+  const clean = (t: string) => dropUnaskedOffer(cleanReply(t, budget.sentences, budget.maxChars), playerText);
   try {
-    const raw = await ai.completeQueued({ messages: chatMessages(save, playerText, now, budget), maxTokens: budget.maxTokens, temperature: 0.8, onText: (t) => onText?.(clean(t)) });
-    const text = clean(raw);
+    const vectors = await recallVectors(save, playerText);
+    const raw = await ai.completeQueued({ messages: chatMessages(save, playerText, now, budget, vectors), maxTokens: budget.maxTokens, temperature: 0.7, onText: (t) => onText?.(clean(t)) });
+    let text = clean(raw);
+    // Small models drift into repeating their own last replies or parroting the
+    // player; try once more without the earlier replies in view.
+    const recent = (activeKinling(save)?.chat ?? []).filter((m) => m.role === 'creature').slice(-3).map((m) => m.text);
+    const examples = exampleReplies(save);
+    if (repeatsRecent(text, [...recent, playerText, ...examples])) {
+      const again = clean(await ai.completeQueued({ messages: chatMessages(save, playerText, now, budget, vectors, 2), maxTokens: budget.maxTokens, temperature: 0.9, onText: (t) => onText?.(clean(t)) }));
+      // Still a copy of a style example: the kinling's own words are better than that.
+      if (repeatsRecent(again, examples)) return fallback();
+      if (usable(again)) text = again;
+    }
+    text = dropRepeatedTail(text, recent);
     return usable(text) ? { text, source: 'ai' } : fallback();
   } catch (err) {
     if (err instanceof AiInterruptedError) {
@@ -138,6 +181,30 @@ export async function suggestFact(save: SaveData, playerText: string): Promise<s
   }
 }
 
+/**
+ * What a kinling takes away from one player message. The rules always run;
+ * when the model is free it may word the memory better and spot growth the
+ * rules missed, and code checks its proposal. Returns null when the model is
+ * loaded but busy, so the message can be appraised a little later instead.
+ */
+export async function appraiseMessage(save: SaveData, kinlingId: string, playerText: string, reply: string | null): Promise<Appraisal | null> {
+  const k = kinlingById(save, kinlingId);
+  if (!k) return null;
+  const player = save.player.name ?? 'My friend';
+  const rule = ruleAppraisal(player, playerText);
+  if (!ai.isLoaded || (playerText.trim().length < 8 && !rule.memory)) return rule;
+  if (!ai.isReady || ai.isBusy) return null;
+  try {
+    const raw = await ai.complete({ messages: appraisalMessages(save, k, playerText, reply), maxTokens: 90, temperature: 0.2, jsonSchema: appraisalSchema(), timeoutMs: 20_000, background: true });
+    const names = [player, k.name, ...save.kinlings.map((x) => x.name)].filter(Boolean);
+    return mergeAppraisal(rule, parseAppraisal(raw), playerText, names, toneIsSafe);
+  } catch (err) {
+    if (err instanceof AiInterruptedError || err instanceof AiBusyError) return null;
+    logFallback('appraisal', err);
+    return rule;
+  }
+}
+
 /** Background: fold older chat into the conversation notes once enough has piled up. */
 export async function summarizeChat(save: SaveData): Promise<{ kinlingId: string; text: string; throughId: string } | null> {
   const k = activeKinling(save);
@@ -145,7 +212,10 @@ export async function summarizeChat(save: SaveData): Promise<{ kinlingId: string
   const batch = unsummarizedMessages(k);
   try {
     const raw = await ai.complete({ messages: summaryMessages(save, batch), maxTokens: 140, temperature: 0.3, timeoutMs: 30_000, background: true });
-    const text = cleanReply(raw, 4, LIMITS.summaryLength);
+    // Only sentences backed by what the player said (or the old notes) are kept.
+    const said = [k.chatSummary?.text ?? '', ...batch.filter((m) => m.role === 'player').map((m) => m.text)].join(' ');
+    const names = [save.player.name ?? '', ...save.kinlings.map((x) => x.name)].filter(Boolean);
+    const text = groundedSentences(cleanReply(raw, 4, LIMITS.summaryLength), said, names);
     return usable(text) && text.length > 20 ? { kinlingId: k.id, text, throughId: batch.at(-1)!.id } : null;
   } catch (err) {
     if (!(err instanceof AiInterruptedError)) logFallback('chat notes', err);

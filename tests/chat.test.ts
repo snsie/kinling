@@ -16,7 +16,7 @@ import {
   SUMMARY_BATCH,
   unsummarizedMessages,
 } from '../src/game/social';
-import { LIMITS } from '../src/game/state';
+import { LIMITS, noInfluence } from '../src/game/state';
 import type { Memory, SaveData } from '../src/game/types';
 import { migrateSave } from '../src/persistence/migrations';
 import { hatchedSave, kin, legacyV3, T0 } from './helpers';
@@ -87,7 +87,7 @@ describe('concept-aware retrieval', () => {
   });
 
   it('matches memories by concept', () => {
-    const mem = (id: string, text: string): Memory => ({ id, at: T0, kind: 'adventure', withIds: [], text, tags: [], importance: 1, pinned: false, private: false });
+    const mem = (id: string, text: string): Memory => ({ id, at: T0, kind: 'adventure', withIds: [], text, tags: [], importance: 1, pinned: false, private: false, valence: 0, influence: noInfluence() });
     const memories = [mem('a', 'We found a swirl shell in the shallows'), mem('b', 'We picked clover in the garden')];
     expect(relevantMemories(memories, 'remember the lake?', T0)[0]!.id).toBe('a');
     expect(relevantMemories(memories, 'the flowers were pretty', T0)[0]!.id).toBe('b');

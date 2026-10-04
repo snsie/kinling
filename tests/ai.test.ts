@@ -91,7 +91,11 @@ describe('prompt context', () => {
     const msgs = chatMessages(s, 'what should we do?', T0 + 100);
     expect(msgs[0]!.role).toBe('system');
     expect(msgs.length).toBeLessThanOrEqual(8);
-    expect(msgs.at(-1)).toEqual({ role: 'user', content: 'what should we do?' });
+    expect(msgs.at(-1)!.role).toBe('user');
+    // The message itself comes last, after a private note of what it brings to mind.
+    const last = String(msgs.at(-1)!.content);
+    expect(last.startsWith('(Private note for Mochi')).toBe(true);
+    expect(last.endsWith(')\n\nwhat should we do?')).toBe(true);
     const sys = creatureSystemPrompt(s, 'garden', T0);
     expect(sys).toContain('Mochi');
     expect(sys).toMatch(/Never guilt-trip/);

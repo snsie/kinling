@@ -90,7 +90,18 @@ export function freshDaily(now: number): KinlingDaily {
     chatBond: 0,
     socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
     feelingDelta: {},
+    reflectPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
   };
+}
+
+export function noInfluence(): Personality {
+  return { curiosity: 0, confidence: 0, playfulness: 0 };
+}
+
+export function clampInfluence(p: Partial<Personality>): Personality {
+  const out = noInfluence();
+  for (const key of PERSONALITY_KEYS) out[key] = clamp(Math.round(p[key] ?? 0), -2, 2);
+  return out;
 }
 
 export function emptyCareLog(): Record<CareAction, number[]> {
@@ -207,6 +218,8 @@ export function hatchKinling(save: SaveData, egg: EggType, appearance: Appearanc
     appearanceHistory: [],
     careLog: emptyCareLog(),
     socialDaily: freshDaily(now),
+    appraisedThroughId: null,
+    lastReflectionAt: now,
   };
 }
 
@@ -223,7 +236,7 @@ export function recordEvent(save: SaveData, kind: GameEventKind, text: string, n
 
 export function recordMemory(
   k: Kinling,
-  memory: { kind: MemoryKind; text: string; tags: string[]; importance: 1 | 2 | 3; withIds?: string[]; private?: boolean },
+  memory: { kind: MemoryKind; text: string; tags: string[]; importance: 1 | 2 | 3; withIds?: string[]; private?: boolean; valence?: number; influence?: Personality },
   now: number,
 ): Memory {
   const m: Memory = {
@@ -233,7 +246,9 @@ export function recordMemory(
     ...memory,
     withIds: memory.withIds ?? [],
     private: memory.private ?? false,
-    tags: memory.tags.map((t) => t.toLowerCase()),
+    tags: memory.tags.map((t) => t.toLowerCase()).slice(0, 20),
+    valence: clamp(Math.round(memory.valence ?? 0), -2, 2),
+    influence: memory.influence ? clampInfluence(memory.influence) : noInfluence(),
   };
   k.memories.push(m);
   trimMemories(k);

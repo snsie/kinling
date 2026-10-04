@@ -3,7 +3,9 @@
 import { FOODS, KEEPSAKES, ROUTES } from './catalog';
 import type { Mood } from './needs';
 import { deriveMood } from './needs';
-import type { FoodId, KeepsakeId, RouteId, SaveData } from './types';
+import type { FoodId, Kinling, KeepsakeId, RouteId, SaveData } from './types';
+import { ruleAppraisal } from './appraisal';
+import { factItems, recall } from './recall';
 import { activeKinling } from './state';
 import { pick } from './util';
 
@@ -99,13 +101,44 @@ export function suggestionLine(save: SaveData): string {
   return pick(['Want to go exploring? The pond and the garden are both calling.', 'We could look at my evolution ideas together!', 'Shall we write in my diary later?'], Math.random);
 }
 
-/** Offline conversational replies by simple keyword matching. */
-export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math.random): string {
+/** A small personality flourish, so a shy kinling and a bold one sound different. */
+function voiced(c: Kinling, line: string, rand: Rand): string {
+  const p = c.personality;
+  if (p.confidence <= 38 && rand() < 0.5) return `Um… ${line.charAt(0).toLowerCase()}${line.slice(1)}`;
+  if (p.playfulness >= 62 && rand() < 0.4) return `Ooh! ${line}`;
+  return line;
+}
+
+const ASKS_MEMORY = /\b(remember|recall|forget|forgot|know)\b|\b(what'?s|what is|what was|who'?s|who is|when'?s|when is|where'?s|do you know) (my|i|the)\b|\bmy \w+'?s name\b|\bwhat (did|do) i\b/;
+
+/** Answer from memory when the player asks about something they shared. */
+function rememberedReply(save: SaveData, c: Kinling, text: string, now: number): string | null {
+  const facts = recall(factItems(save.player.facts), text, { now, limit: 1, filler: 0 });
+  const chats = recall(c.memories.filter((m) => m.kind === 'player-chat'), text, { now, limit: 1, filler: 0 });
+  const fact = facts[0];
+  const chat = chats[0];
+  if (fact && fact.relevance >= 0.3 && (!chat || fact.relevance >= chat.relevance)) return `I remember! You told me "${fact.item.text}".`;
+  if (chat && chat.relevance >= 0.3) return `I remember! ${chat.item.text}`;
+  return null;
+}
+
+/** Offline conversational replies by simple keyword matching, plus what the kinling remembers. */
+export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math.random, now = Date.now()): string {
   const c = activeKinling(save);
   if (!c) return '...';
-  const t = text.toLowerCase();
+  const t = text.toLowerCase().replace(/[’']/g, "'");
   const player = save.player.name ?? 'friend';
   const food = c.preferences.knownFavoriteFood ? FOODS[c.preferences.favoriteFood].name : null;
+  if (ASKS_MEMORY.test(t)) {
+    const remembered = rememberedReply(save, c, text, now);
+    if (remembered) return remembered;
+    if (/\b(remember|recall)\b/.test(t)) return voiced(c, 'Hmm, I don\'t think I remember that one. Will you tell me again?', rand);
+  }
+  const reply = ruleAppraisal(player, text);
+  if (reply.feeling === 'hurt') return 'Oh… that made my ears droop a little.';
+  if (reply.feeling === 'proud') return voiced(c, pick(['Really? You think I\'m brave? That makes me feel taller!', 'You believe in me? Then I\'ll try my very best!'], rand), rand);
+  if (reply.feeling === 'worried') return voiced(c, pick([`Oh, ${player}… I\'m right here with you. Do you want to tell me more?`, 'That sounds hard. I\'ll sit with you as long as you like.'], rand), rand);
+  if (reply.feeling === 'excited' && reply.shared) return voiced(c, pick(['Wow, really? Tell me everything!', 'That\'s wonderful news! My tail is wiggling just hearing it.'], rand), rand);
   if (/\b(hi|hello|hey|good (morning|evening|afternoon))\b/.test(t)) return greetingLine(save, rand);
   if (/how are you|how do you feel|you ok/.test(t)) {
     const mood = deriveMood(c.needs);
@@ -126,14 +159,19 @@ export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math
   if (/garden|pond|explore|adventure|where/.test(t)) return suggestionLine(save);
   if (/name/.test(t)) return `I'm ${c.name}! And you're ${player}. We're a good pair.`;
   if (/what do you want|what should we do|bored|idea/.test(t)) return suggestionLine(save);
-  return pick(
-    [
-      'Ooh, tell me more!',
-      `I like it when you talk to me, ${player}.`,
-      'Hmm! That makes me think of the garden for some reason.',
-      '*tilts head* That sounds interesting!',
-      suggestionLine(save),
-    ],
+  if (reply.shared) return voiced(c, pick(['Ooh, tell me more!', 'I\'ll remember that!', `Thank you for telling me, ${player}.`], rand), rand);
+  return voiced(
+    c,
+    pick(
+      [
+        'Ooh, tell me more!',
+        `I like it when you talk to me, ${player}.`,
+        'Hmm! That makes me think of the garden for some reason.',
+        '*tilts head* That sounds interesting!',
+        suggestionLine(save),
+      ],
+      rand,
+    ),
     rand,
   );
 }
