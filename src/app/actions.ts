@@ -35,6 +35,8 @@ export function presentFeedback(f: Feedback): void {
   playSfx(f.sound);
   if (f.toast) ui.toast(f.toast, f.ok ? 'success' : 'warn');
   if (f.unlocked?.length) ui.toast(`New evolution option${f.unlocked.length > 1 ? 's' : ''}: ${f.unlocked.map(traitLabel).join(', ')}`, 'success');
+  // A stage-up says enough on its own; otherwise celebrate the new level.
+  if (f.levelUp && !f.stageUp) ui.toast(`Your kinling reached level ${f.levelUp}!`, 'success');
   if (f.stageUp) {
     ui.toast(`Your kinling grew into a ${f.stageUp}!`, 'success');
     setTimeout(() => ui.say(stageUpLine(f.stageUp!), 'authored'), 2600);

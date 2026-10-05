@@ -2,8 +2,8 @@
 import { useState } from 'react';
 import { doCare } from '../../app/actions';
 import { FOODS, KEEPSAKES, MATERIALS } from '../../game/catalog';
-import { nextStageAt, lifeStageFor, STAGE_LABELS } from '../../game/stage';
-import { nextEggAt, totalBond } from '../../game/eggs';
+import { bondForLevel, levelFor, MAX_LEVEL, nextStageAt, lifeStageFor, STAGE_LABELS } from '../../game/stage';
+import { EGG_LEVEL, eggWaiting, kinlingsBelowEggLevel } from '../../game/eggs';
 import { recentReflections } from '../../game/appraisal';
 import { describeFeelings } from '../../game/feelings';
 import { activeKinling, personalityWords } from '../../game/state';
@@ -21,7 +21,8 @@ export function BagPanel({ save }: { save: SaveData }) {
   const next = nextStageAt(c.bond);
   const pref = c.preferences;
   const feelings = describeFeelings(save, c.id);
-  const nextEgg = nextEggAt(save);
+  const level = levelFor(c.bond);
+  const growing = kinlingsBelowEggLevel(save);
   const lately = recentReflections(c, Date.now(), 1)[0];
   const sinceHatching = (key: PersonalityKey) => {
     const d = Math.round(c.personality[key] - c.baseline[key]);
@@ -104,7 +105,7 @@ export function BagPanel({ save }: { save: SaveData }) {
       <section className="about card" aria-labelledby="bag-about" data-reveal="">
         <h3 id="bag-about">About {c.name}</h3>
         <p>
-          {STAGE_LABELS[stage]} from a {c.egg} egg · {personalityWords(c.personality).join(', ')}
+          Level {level} {STAGE_LABELS[stage].toLowerCase()} from a {c.egg} egg · {personalityWords(c.personality).join(', ')}
         </p>
         {feelings.length > 0 && (
           <p className="about__feelings">
@@ -130,17 +131,21 @@ export function BagPanel({ save }: { save: SaveData }) {
           <span>Bond</span>
           <Bar value={c.bond} max={next?.bond ?? Math.max(200, c.bond)} color="var(--lilac)" label="Bond toward next stage" />
         </div>
-        <p className="hint">{next ? `Grows into a ${STAGE_LABELS[next.stage]} at bond ${next.bond} (now ${Math.floor(c.bond)}).` : 'Fully grown!'}</p>
+        <p className="hint">
+          {level < MAX_LEVEL ? `Level ${level + 1} at bond ${bondForLevel(level + 1)} (now ${Math.floor(c.bond)}). ` : 'Highest level! '}
+          {next ? `Grows into a ${STAGE_LABELS[next.stage]} at bond ${next.bond}.` : 'Fully grown!'}
+        </p>
         <ul className="bullets">
           <li>Favorite food: {pref.knownFavoriteFood ? FOODS[pref.favoriteFood].name : 'not discovered yet — try different snacks'}</li>
           <li>Not fond of: {pref.knownDislikedFood ? FOODS[pref.dislikedFood].name : 'unknown'}</li>
           <li>Favorite place: {pref.knownFavoritePlace ? `the ${pref.favoritePlace}` : 'not discovered yet — explore!'}</li>
         </ul>
-        {nextEgg !== null && (
+        {growing.length > 0 && (
           <p className="hint">
-            A new egg arrives when your kinlings' bond adds up to {nextEgg} (now {Math.floor(totalBond(save))}).
+            A new egg arrives once all your kinlings reach level {EGG_LEVEL}. Still growing: {growing.map((k) => `${k.name} (level ${levelFor(k.bond)})`).join(', ')}.
           </p>
         )}
+        {eggWaiting(save) && <p className="hint">A new egg is waiting at home!</p>}
       </section>
     </div>
   );

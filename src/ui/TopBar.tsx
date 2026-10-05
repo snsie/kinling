@@ -3,7 +3,7 @@ import { aiStatusLabel, useAiStatus } from '../app/aiControl';
 import { useStore } from '../app/actions';
 import { store } from '../app/store';
 import { ui } from '../app/ui';
-import { lifeStageFor, STAGE_LABELS } from '../game/stage';
+import { levelFor, lifeStageFor, STAGE_LABELS } from '../game/stage';
 import type { SaveData } from '../game/types';
 import { SaveStatusText } from './panels/SettingsPanel';
 import { activeKinling } from '../game/state';
@@ -46,7 +46,9 @@ export function TopBar({ save }: { save: SaveData | null }) {
       {c && c.name && (
         <div className="topbar__who">
           <strong>{c.name}</strong>
-          <span className="pill pill--small">{STAGE_LABELS[lifeStageFor(c.bond)]}</span>
+          <span className="pill pill--small">
+            Lv {levelFor(c.bond)} · {STAGE_LABELS[lifeStageFor(c.bond)]}
+          </span>
         </div>
       )}
       <div className="topbar__status">

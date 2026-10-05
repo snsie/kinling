@@ -82,6 +82,8 @@ Deploying is just static hosting of `dist/`. The build uses relative paths, so i
 | Feelings toward you | Kind words, encouragement and being confided in raise warmth and trust; unkind words lower them. At most +3/−3 per message and 6 per day, and never below 0. |
 | Affinities: woodland, aquatic (0–100) | Garden trips and woodland snacks raise woodland affinity; pond trips and aquatic snacks raise aquatic affinity. Each trip adds up to +10, based on score. |
 | Bond → life stage | Care, adventures, first-time evolutions and diary entries raise bond. Hatchling → Sprout at 60 → Grown at 200. |
+| Bond → level (1–30) | Level L needs ⅔·L·(L−1) bond: level 2 at bond 2, level 5 at 14, **level 10 at 60** (with the Sprout stage), level 20 at 254. Shown in the top bar and the Bag; levels never go down. |
+| New kinlings | When **every** kinling you have reaches level 10, a new egg appears at home (up to four kinlings). A freshly hatched kinling starts at level 1, so the next egg comes once it has grown to level 10 too. The Bag lists who is still growing. |
 | Preferences | Each egg has a hidden favorite food, a disliked food and a favorite place, discovered through play. |
 
 ### Evolution catalog

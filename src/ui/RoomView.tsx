@@ -5,7 +5,7 @@ import { beginEggHatch, chooseKinling } from '../app/actions';
 import { useRoom } from '../app/room';
 import { useUi } from '../app/ui';
 import { TOPIC_LABELS, isTopic } from '../game/chatter';
-import { eggWaiting } from '../game/eggs';
+import { EGG_LEVEL, eggWaiting } from '../game/eggs';
 import { deriveMood } from '../game/needs';
 import { lifeStageFor } from '../game/stage';
 import { activeKinling } from '../game/state';
@@ -164,7 +164,7 @@ export function RoomView({ save, reducedMotion }: { save: SaveData; reducedMotio
             <Egg egg="woodland" state={reducedMotion ? 'idle' : 'wobble'} reducedMotion={reducedMotion} size="100%" />
           </span>
           <p>
-            <strong>A new egg appeared!</strong> Your kinlings' bond has grown. Choose what kind of kinling hatches next.
+            <strong>A new egg appeared!</strong> All your kinlings reached level {EGG_LEVEL}. Choose what kind of kinling hatches next.
           </p>
           <button className="btn btn--primary" onClick={beginEggHatch}>
             Hatch the egg

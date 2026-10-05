@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { performCare } from '../src/game/care';
 import { authoredLines, holdConversation, pickTopic, TOPICS } from '../src/game/chatter';
-import { cancelSiblingHatch, EGG_MILESTONES, eggWaiting, startSiblingHatch } from '../src/game/eggs';
+import { cancelSiblingHatch, EGG_LEVEL, eggWaiting, kinlingsBelowEggLevel, startSiblingHatch } from '../src/game/eggs';
+import { bondForLevel, levelFor, MAX_LEVEL } from '../src/game/stage';
 import {
   applySocialOutcome,
   changeFeeling,
@@ -165,11 +166,29 @@ describe('authored conversations', () => {
   });
 });
 
+describe('levels', () => {
+  it('rise quickly at first and reach 10 at bond 60', () => {
+    expect([0, 1.9, 2, 4, 59.9, 60].map(levelFor)).toEqual([1, 1, 2, 3, 9, 10]);
+    expect(bondForLevel(1)).toBe(0);
+    expect(bondForLevel(EGG_LEVEL)).toBe(60);
+    for (let l = 2; l <= MAX_LEVEL; l++) expect(bondForLevel(l)).toBeGreaterThan(bondForLevel(l - 1));
+    expect(levelFor(1_000_000)).toBe(MAX_LEVEL);
+  });
+
+  it('reports a level-up in the feedback', () => {
+    const s = hatchedSave();
+    kin(s).bond = bondForLevel(4) - 0.5;
+    expect(performCare(s, kin(s).id, 'feed', T0, { food: 'dewberry' }).feedback.levelUp).toBe(4);
+    kin(s).bond = bondForLevel(4) + 0.5;
+    expect(performCare(s, kin(s).id, 'feed', T0, { food: 'dewberry' }).feedback.levelUp).toBeUndefined();
+  });
+});
+
 describe('new eggs', () => {
-  it('arrives at the first bond milestone and hatches through the usual steps', () => {
+  it('arrives when the kinling reaches level 10 and hatches through the usual steps', () => {
     let s = hatchedSave('woodland');
     expect(eggWaiting(s)).toBe(false);
-    kin(s).bond = EGG_MILESTONES[0] - 0.5;
+    kin(s).bond = bondForLevel(EGG_LEVEL) - 0.5;
     const fed = performCare(s, kin(s).id, 'feed', T0, { food: 'dewberry' });
     expect(fed.feedback.eggArrived).toBe(true);
     s = fed.save;
@@ -194,6 +213,25 @@ describe('new eggs', () => {
     expect(feelingOf(s, luma!.id, PLAYER_ID)).toBeTruthy();
     expect(eggWaiting(s)).toBe(false);
     expect(validateSave(s).ok).toBe(true);
+  });
+
+  it('waits until every kinling reaches level 10, however far ahead the others are', () => {
+    const s = family(2);
+    const [mochi, pip] = s.kinlings;
+    mochi!.bond = 500;
+    pip!.bond = bondForLevel(EGG_LEVEL) - 0.5;
+    expect(eggWaiting(s)).toBe(false);
+    expect(kinlingsBelowEggLevel(s).map((k) => k.name)).toEqual(['Pip']);
+    // Pip's progress is what brings the egg.
+    s.activeKinlingId = pip!.id;
+    const fed = performCare(s, pip!.id, 'feed', T0, { food: 'dewberry' });
+    expect(fed.feedback.eggArrived).toBe(true);
+    expect(eggWaiting(fed.save)).toBe(true);
+    expect(kinlingsBelowEggLevel(fed.save)).toEqual([]);
+    // Mochi's progress while Pip is still growing brings nothing.
+    const t = family(2);
+    t.kinlings[0]!.bond = 300;
+    expect(performCare(t, t.kinlings[0]!.id, 'feed', T0, { food: 'dewberry' }).feedback.eggArrived).toBeUndefined();
   });
 
   it('will not hatch without a waiting egg, or past four kinlings', () => {
