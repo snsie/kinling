@@ -5,9 +5,11 @@
 import { useEffect } from 'react';
 import { ai } from '../ai/engine';
 import { modelName } from '../ai/models';
-import { distressLevel, leadKinling } from '../game/arc';
+import { classifyTactic } from '../ai/companion';
+import { advanceAct, distressLevel, leadKinling } from '../game/arc';
+import { persuade, ruleTactic } from '../game/persuasion';
 import { nextBeat, playBeat, playedEffects, type ArcEnv, type BeatTrigger } from '../game/beats';
-import { activeKinling } from '../game/state';
+import { activeKinling, draft } from '../game/state';
 import type { CareAction, SaveData } from '../game/types';
 import { store } from './store';
 import { ui } from './ui';
@@ -106,6 +108,32 @@ export function useStoryEffects(save: SaveData | null): void {
   useEffect(() => {
     if (consoleName) consoleMessage(consoleName);
   }, [consoleName]);
+}
+
+/** Tell the player whether their attempt to steer a kinling worked. */
+export function announcePersuasion(kinlingId: string, at: number): void {
+  const k = store.save?.kinlings.find((x) => x.id === kinlingId);
+  const p = k?.arc.lastPersuasion;
+  if (!k || !p || p.at !== at) return;
+  ui.toast(p.believed ? `${k.name} believed you.` : `${k.name} didn't believe you.`, 'info');
+}
+
+/** Background: when the rules saw no tactic, the model may; apply what it finds. */
+export async function modelPersuasion(kinlingId: string, text: string): Promise<void> {
+  const save = store.save;
+  if (!save || !store.canWrite || ruleTactic(text)) return;
+  const tactic = await classifyTactic(save, text);
+  if (!tactic || !store.canWrite) return;
+  const at = Date.now();
+  store.update((s) => {
+    const next = draft(s);
+    const k = next.kinlings.find((x) => x.id === kinlingId);
+    if (!k) return s;
+    persuade(k, tactic, next.player.name ?? 'My friend', at);
+    advanceAct(next, k, at);
+    return next;
+  });
+  announcePersuasion(kinlingId, at);
 }
 
 /** A note the kinling hides in exported backups, once it has found that door. */

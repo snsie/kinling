@@ -10,6 +10,7 @@
 import { levelFor } from './stage';
 import { draft, kinlingById, nudgePersonality, recordEvent, recordMemory } from './state';
 import { ruleAppraisal, type FeelingWord } from './appraisal';
+import { breakPromise, persuade, ruleTactic } from './persuasion';
 import type { ArcAct, Kinling, Personality, SaveData, StoryTraitKey } from './types';
 import { ARC_ACTS } from './types';
 import { clamp, dayKey } from './util';
@@ -125,7 +126,7 @@ function round(n: number): number {
  * grace period since the last care, and while needs are low; a long absence
  * leaves the kinling wondering where the world went.
  */
-export function arcOnTime(k: Kinling, from: number, to: number, absent: boolean): void {
+export function arcOnTime(k: Kinling, from: number, to: number, absent: boolean, player = 'My friend'): void {
   if (!(to > from)) return;
   const d = ARC.distress;
   const neglectStart = Math.max(from, k.arc.lastCareAt + d.graceHours * 3_600_000);
@@ -138,7 +139,11 @@ export function arcOnTime(k: Kinling, from: number, to: number, absent: boolean)
   // Being left until upset, and again until distraught, leaves a mark on who the kinling is.
   const after = distressLevel(k.arc.distress);
   if (after !== before && (after === 'upset' || after === 'distraught')) {
-    if (before !== 'upset' || after !== 'distraught') shiftStoryTraits(k.personality, STORY_SHIFTS.upset);
+    if (before !== 'upset' || after !== 'distraught') {
+      shiftStoryTraits(k.personality, STORY_SHIFTS.upset);
+      // Left until upset soon after promising never to leave: the promise is broken.
+      breakPromise(k, player, to);
+    }
     if (after === 'distraught') shiftStoryTraits(k.personality, STORY_SHIFTS.distraught);
   }
   const hours = (to - from) / 3_600_000;
@@ -169,12 +174,19 @@ export function arcOnChat(k: Kinling, feeling: FeelingWord, now: number): void {
   gainAwareness(k, ARC.gain.chat, now);
 }
 
-/** A player message reached a kinling: how it landed moves distress, and talking makes it think. */
+/**
+ * A player message reached a kinling: how it landed moves distress, talking
+ * makes it think, and a clear attempt to steer it (src/game/persuasion.ts)
+ * works or fails depending on how much it believes the player.
+ */
 export function arcChat(save: SaveData, kinlingId: string, text: string, now: number): SaveData {
   if (!kinlingById(save, kinlingId)) return save;
   const s = draft(save);
   const k = kinlingById(s, kinlingId)!;
-  arcOnChat(k, ruleAppraisal(s.player.name ?? 'My friend', text).feeling, now);
+  const player = s.player.name ?? 'My friend';
+  arcOnChat(k, ruleAppraisal(player, text).feeling, now);
+  const tactic = ruleTactic(text);
+  if (tactic) persuade(k, tactic, player, now);
   advanceAct(s, k, now);
   return s;
 }

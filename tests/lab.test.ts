@@ -183,6 +183,6 @@ describe('lab story controls', () => {
     const up = normalizeSession(old as unknown as LabSession);
     expect(labKinling(up).arc.act).toBe('devotion');
     expect(up.arcSteps).toEqual([]);
-    expect(up.config.story).toEqual({ rules: true, beats: true });
+    expect(up.config.story).toEqual({ rules: true, modelTactics: true, beats: true });
   });
 });

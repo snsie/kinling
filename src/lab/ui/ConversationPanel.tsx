@@ -1,6 +1,7 @@
 // Middle column: the trait chart, the conversation with each turn's trait
 // changes, the message box and the script runner.
 import { useEffect, useRef, useState } from 'react';
+import { TACTIC_DEFS } from '../../game/persuasion';
 import { lab, type LabState } from '../store';
 import type { LabSession, LabTurn } from '../types';
 import { PERSONALITY_KEYS, signed, TRAIT_COLORS } from './controls';
@@ -11,6 +12,24 @@ function EventView({ turn, selected }: { turn: LabTurn; selected: boolean }) {
     <div className="turn event" aria-current={selected} onClick={() => lab.selectTurn(turn.id)}>
       <span className="event-chip">{turn.event}</span>
       {turn.reply && <div className={`bubble kin${turn.beat ? ' beat' : ''}`}>{turn.reply}</div>}
+    </div>
+  );
+}
+
+function PersuasionLine({ p }: { p: NonNullable<LabTurn['persuasion']> }) {
+  const changes = Object.entries(p.applied).filter(([, v]) => v);
+  return (
+    <div className="chips" title={`Spotted by ${p.source === 'rules' ? 'the rules' : 'the model'}. Credulity ${Math.round(p.weight * 100)}%: believed at 50% or more.`}>
+      <span className={`chip tactic ${p.believed ? 'believed' : 'resisted'}`}>
+        {TACTIC_DEFS[p.tactic].label} · {p.believed ? 'believed' : 'resisted'} ({Math.round(p.weight * 100)}%)
+      </span>
+      {changes.length === 0 && <span className="chip">no effect (repeated too often today)</span>}
+      {changes.map(([key, v]) => (
+        <span key={key} className="chip">
+          {key} {signed(Math.round(v! * 10) / 10)}
+        </span>
+      ))}
+      <span className="muted small">{p.source === 'model' ? 'model' : 'rules'}</span>
     </div>
   );
 }
@@ -33,6 +52,7 @@ function TurnView({ session, turn, selected }: { session: LabSession; turn: LabT
       ) : (
         <div className="bubble kin pending">{chat?.output || '…'}</div>
       )}
+      {turn.persuasion && <PersuasionLine p={turn.persuasion} />}
       {(steps.length > 0 || pendingEvolve || failedEvolve) && (
         <div className="steps">
           {steps.map((s) => {

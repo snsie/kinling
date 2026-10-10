@@ -232,6 +232,10 @@ details > summary { cursor: pointer; color: var(--ink-2); }
 .badge.chat { background: var(--usr); border: 1px solid var(--usr-edge); }
 .badge.evolve { background: var(--sys); border: 1px solid var(--sys-edge); }
 .badge.rerun { background: var(--warn); color: var(--warn-ink); }
+.badge.tactic { background: var(--panel-2); border: 1px solid var(--edge); }
+.chip.tactic { font-weight: 600; }
+.chip.tactic.believed { border-color: var(--asst-edge); background: var(--asst); }
+.chip.tactic.resisted { border-color: var(--del-ink); background: var(--del); color: var(--del-ink); }
 .call-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--edge); }
 .tabs button { border: 0; background: none; padding: 4px 8px; cursor: pointer; color: var(--ink-2); border-bottom: 2px solid transparent; }

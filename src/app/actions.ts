@@ -19,7 +19,7 @@ import { cancelSiblingHatch, startSiblingHatch } from '../game/eggs';
 import { activeKinling, draft, kinlingById, selectKinling } from '../game/state';
 import { playSfx } from './sfx';
 import { store, type StoreSnapshot } from './store';
-import { storyBeat } from './story';
+import { announcePersuasion, modelPersuasion, storyBeat } from './story';
 import { ui } from './ui';
 
 export function useStore(): StoreSnapshot {
@@ -191,12 +191,14 @@ export async function sendChat(text: string): Promise<void> {
     chatInFlight = false;
   }
   storyBeat('chat', { playerText: clean }, 1800);
-  void afterChat(clean, reply.offerFact ? reply.messageId : null);
+  void afterChat(k.id, clean, reply.offerFact ? reply.messageId : null);
 }
 
 /** Store the player's message to a kinling and answer it. Returns the reply's message id. */
 async function respond(kinlingId: string, clean: string): Promise<{ messageId: string | null; offerFact: boolean }> {
-  store.update((s) => arcChat(addChatMessage(s, kinlingId, 'player', clean, 'player', now()), kinlingId, clean, now()));
+  const sentAt = now();
+  store.update((s) => arcChat(addChatMessage(s, kinlingId, 'player', clean, 'player', sentAt), kinlingId, clean, sentAt));
+  announcePersuasion(kinlingId, sentAt);
   const save = store.save!;
 
   // Explicit "remember that..." facts are stored in the player's own words.
@@ -245,9 +247,10 @@ async function respond(kinlingId: string, clean: string): Promise<{ messageId: s
  * fact the player shared, and fold older chat into the conversation notes.
  * Model work gives way the moment the player sends another message.
  */
-async function afterChat(playerText: string, factReplyId: string | null): Promise<void> {
+async function afterChat(kinlingId: string, playerText: string, factReplyId: string | null): Promise<void> {
   const remembered = await rememberChat();
   if (!ai.isReady) return;
+  await modelPersuasion(kinlingId, playerText);
   // The kinling already remembered this message; asking to remember it again would be odd.
   if (factReplyId && store.save && !remembered.has(factReplyId)) {
     const fact = await suggestFact(store.save, playerText);

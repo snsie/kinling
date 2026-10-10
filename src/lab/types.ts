@@ -2,7 +2,7 @@
 // model call made along the way, and how its traits moved turn by turn.
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import type { CompletionUsage } from '../ai/engine';
-import type { ArcAct, Personality, SaveData } from '../game/types';
+import type { ArcAct, KinlingArc, Personality, SaveData } from '../game/types';
 
 /** 'game' sends exactly what the game would; 'custom' uses the editable template. */
 export type PromptMode = 'game' | 'custom';
@@ -49,6 +49,8 @@ export interface EvolveConfig {
 export interface StoryConfig {
   /** Apply the game's story rules: chat moves distress and awareness, as in the game. */
   rules: boolean;
+  /** When the rules see no attempt to steer the kinling, ask the model (as the game does in the background). */
+  modelTactics: boolean;
   /** Play the game's authored beats when they fit (after chats, care, time passing). */
   beats: boolean;
 }
@@ -59,7 +61,7 @@ export interface LabConfig {
   story: StoryConfig;
 }
 
-export type CallKind = 'chat' | 'evolve' | 'rerun';
+export type CallKind = 'chat' | 'evolve' | 'rerun' | 'tactic';
 
 /** completionBody() without the messages: the sampling settings actually sent. */
 export interface RequestBody {
@@ -121,6 +123,8 @@ export interface LabTurn {
   event?: string;
   /** The beat played, if any. */
   beat?: string;
+  /** An attempt to steer the kinling in this message, and how it went. */
+  persuasion?: NonNullable<KinlingArc['lastPersuasion']> & { source: 'rules' | 'model' };
 }
 
 /** The story's state after something changed it. */

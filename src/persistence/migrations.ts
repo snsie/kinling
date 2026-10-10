@@ -10,9 +10,10 @@
 // turn chat into memories or reflect on them.
 // v5 kinlings had no story arc, and there was no story-effects setting.
 // v6 personalities had no story traits (devotion, fear, defiance).
+// v7 kinlings could not be talked round (no promises or tactic counts).
 import { shiftStoryTraits, STORY_SHIFTS } from '../game/arc';
 import { EGGS } from '../game/catalog';
-import { newArc, playerFeelingFromBond } from '../game/state';
+import { newArc, newPersuasionState, playerFeelingFromBond } from '../game/state';
 import { ARC_ACTS, STORY_TRAIT_KEYS, type ArcAct, type EggType, type Personality } from '../game/types';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
 import type { SaveData } from '../game/types';
@@ -129,6 +130,13 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
       };
     });
     return { ...v6, kinlings, schemaVersion: 7 };
+  },
+  7: (v7) => {
+    const kinlings = (Array.isArray(v7.kinlings) ? v7.kinlings : []).map((raw) => {
+      const k = raw as AnyRecord;
+      return { ...k, arc: { ...(k.arc as AnyRecord), ...newPersuasionState() } };
+    });
+    return { ...v7, kinlings, schemaVersion: 8 };
   },
 };
 

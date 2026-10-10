@@ -154,7 +154,7 @@ export function tick(save: SaveData, now: number, rand: () => number = Math.rand
     ensureDaily(k, now);
     const next = advanceNeeds(k.needs, elapsed);
     absent = next.absent;
-    arcOnTime(k, save.lastTickAt, now, absent);
+    arcOnTime(k, save.lastTickAt, now, absent, s.player.name ?? 'My friend');
     k.needs = next.needs;
     advanceAct(s, k, now);
   }

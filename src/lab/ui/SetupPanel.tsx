@@ -7,6 +7,7 @@ import { EGGS } from '../../game/catalog';
 import { personalityVoice } from '../../game/persona';
 import { ACT_LABELS, ARC, distressLevel } from '../../game/arc';
 import { BEATS } from '../../game/beats';
+import { credulity } from '../../game/persuasion';
 import { levelFor } from '../../game/stage';
 import { ARC_ACTS, CARE_ACTIONS, EGG_TYPES, MODEL_IDS, type ArcAct, type EggType, type ModelId, type Personality } from '../../game/types';
 import { formatDuration } from '../../game/util';
@@ -343,7 +344,11 @@ function StoryBox({ session, busy }: { session: LabSession; busy: boolean }) {
         onChange={(v) => lab.setArc({ awareness: v })}
         hint={`${Math.round(arc.awarenessToday * 10) / 10}/${ARC.dailyAwareness} gained today (daily cap)`}
       />
-      <Check label="Game story rules on chat (distress and awareness)" checked={cfg.rules} onChange={(v) => set({ rules: v })} />
+      <p className="small muted" style={{ margin: '0 0 6px' }}>
+        Believes you: <strong>{Math.round(credulity(k) * 100)}%</strong> (attempts to steer it work at 50% or more; devotion raises it, defiance and later acts lower it)
+      </p>
+      <Check label="Game story rules on chat (distress, awareness, persuasion)" checked={cfg.rules} onChange={(v) => set({ rules: v })} />
+      <Check label="Ask the model for tactics the rules miss" checked={cfg.modelTactics} onChange={(v) => set({ modelTactics: v })} />
       <Check label="Play beats when they fit" checked={cfg.beats} onChange={(v) => set({ beats: v })} />
       <h3>Time and care</h3>
       <div className="row">

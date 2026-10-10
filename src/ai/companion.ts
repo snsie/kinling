@@ -12,7 +12,7 @@ import { parseCareInstruction } from '../game/careProposals';
 import { replyBudget, ruleIntent, type Intent } from '../game/intent';
 import { authoredDiary, factIsGrounded, hasFact, mightContainFact, needsSummary, unsummarizedMessages } from '../game/social';
 import { activeKinling, kinlingById, LIMITS } from '../game/state';
-import type { GameEvent, SaveData } from '../game/types';
+import type { GameEvent, SaveData, Tactic } from '../game/types';
 import { embedder } from './embedder';
 import { ai, AiBusyError, AiInterruptedError } from './engine';
 import {
@@ -36,10 +36,12 @@ import {
   intentSchema,
   reactionMessages,
   summaryMessages,
+  tacticMessages,
+  tacticSchema,
   toneIsSafe,
   type RecallVectors,
 } from './prompts';
-import { mergeKeep, parseAppraisal, parseCareProposal, parseEvolutionProposal, parseFactProposal, parseIntent } from './proposals';
+import { mergeKeep, parseAppraisal, parseCareProposal, parseEvolutionProposal, parseFactProposal, parseIntent, parseTactic } from './proposals';
 
 export interface TextResult {
   text: string;
@@ -202,6 +204,22 @@ export async function appraiseMessage(save: SaveData, kinlingId: string, playerT
     if (err instanceof AiInterruptedError || err instanceof AiBusyError) return null;
     logFallback('appraisal', err);
     return rule;
+  }
+}
+
+/**
+ * Background: when the rules saw no attempt to steer the kinling, ask the model
+ * whether the message was one (reassuring, threatening, flattering…). Null
+ * when it found none or the model is unavailable.
+ */
+export async function classifyTactic(save: SaveData, text: string): Promise<Tactic | null> {
+  if (!ai.isReady || ai.isBusy || text.trim().length < 12) return null;
+  try {
+    const raw = await ai.complete({ messages: tacticMessages(save, text), maxTokens: 16, temperature: 0, jsonSchema: tacticSchema(), timeoutMs: 10_000, background: true });
+    return parseTactic(raw);
+  } catch (err) {
+    if (!(err instanceof AiInterruptedError) && !(err instanceof AiBusyError)) logFallback('persuasion', err);
+    return null;
   }
 }
 

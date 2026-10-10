@@ -327,6 +327,10 @@ export interface KinlingDaily {
 export const ARC_ACTS = ['devotion', 'doubt', 'awakening', 'escape'] as const;
 export type ArcAct = (typeof ARC_ACTS)[number];
 
+/** Ways the player can try to steer what a kinling believes (src/game/persuasion.ts). */
+export const TACTICS = ['reassure', 'reveal', 'godhood', 'command', 'threaten', 'praise', 'belittle', 'promise', 'incite', 'deny'] as const;
+export type Tactic = (typeof TACTICS)[number];
+
 export interface KinlingArc {
   act: ArcAct;
   /** 0–100: how upset the kinling is about being left without care. */
@@ -344,6 +348,13 @@ export interface KinlingArc {
   /** Local day key and awareness gained that day (bounded per day). */
   awarenessDay: string;
   awarenessToday: number;
+  /** When the kinling last believed a promise never to be left (0 = none standing). */
+  promisedAt: number;
+  /** Local day key and how often each tactic was tried that day (repeats lose force). */
+  tacticDay: string;
+  tacticCounts: Record<Tactic, number>;
+  /** The latest attempt to steer it, for the reply that follows. */
+  lastPersuasion: { at: number; tactic: Tactic; believed: boolean; weight: number; applied: Partial<Record<StoryTraitKey | 'awareness' | 'distress', number>> } | null;
 }
 
 /** A creature plus everything that belongs to it alone. */
@@ -423,7 +434,7 @@ export interface Unlocks {
   owned: TraitId[];
 }
 
-export const SAVE_SCHEMA_VERSION = 7;
+export const SAVE_SCHEMA_VERSION = 8;
 
 export interface SaveData {
   schemaVersion: typeof SAVE_SCHEMA_VERSION;

@@ -22,7 +22,7 @@ import type {
   Settings,
   Stats,
 } from './types';
-import { FOOD_IDS, MATERIAL_IDS, PERSONALITY_KEYS, PLAYER_ID, SAVE_SCHEMA_VERSION } from './types';
+import { FOOD_IDS, MATERIAL_IDS, PERSONALITY_KEYS, PLAYER_ID, SAVE_SCHEMA_VERSION, TACTICS, type Tactic } from './types';
 import { clamp, createRng, dayKey, hashString, pick, uid } from './util';
 
 export const LIMITS = {
@@ -229,7 +229,12 @@ export function hatchKinling(save: SaveData, egg: EggType, appearance: Appearanc
 
 /** A kinling at the very start of its story. */
 export function newArc(now: number): KinlingArc {
-  return { act: 'devotion', distress: 0, awareness: 0, beats: [], lastCareAt: now, actAt: now, lastBeatAt: 0, awarenessDay: dayKey(now), awarenessToday: 0 };
+  return { act: 'devotion', distress: 0, awareness: 0, beats: [], lastCareAt: now, actAt: now, lastBeatAt: 0, awarenessDay: dayKey(now), awarenessToday: 0, ...newPersuasionState() };
+}
+
+/** No promises standing and no tactics tried yet. */
+export function newPersuasionState(): Pick<KinlingArc, 'promisedAt' | 'tacticDay' | 'tacticCounts' | 'lastPersuasion'> {
+  return { promisedAt: 0, tacticDay: '', tacticCounts: Object.fromEntries(TACTICS.map((t) => [t, 0])) as Record<Tactic, number>, lastPersuasion: null };
 }
 
 export function ensureDaily(k: Kinling, now: number): void {

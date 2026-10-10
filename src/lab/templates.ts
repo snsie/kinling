@@ -64,7 +64,7 @@ export function defaultConfig(): LabConfig {
       feedbackNotes: 3,
       recordReflections: true,
     },
-    story: { rules: true, beats: true },
+    story: { rules: true, modelTactics: true, beats: true },
   };
 }
 

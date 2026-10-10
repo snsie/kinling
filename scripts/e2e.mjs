@@ -333,7 +333,7 @@ await step('export backup produces a validated JSON file', async () => {
   const path = await download.path();
   exported = JSON.parse(readFileSync(path, 'utf8'));
   expect(exported.format === 'kinling-save', 'format tag');
-  expect(exported.save.schemaVersion === 7, 'schema version');
+  expect(exported.save.schemaVersion === 8, 'schema version');
   expect(exported.save.kinlings[0].name === 'Mochi', 'kinling name');
   writeFileSync(join(OUT, 'exported-save.json'), JSON.stringify(exported, null, 2));
   return `${download.suggestedFilename()} (${JSON.stringify(exported).length} bytes)`;

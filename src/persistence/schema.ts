@@ -5,6 +5,7 @@ import { isTraitId, wornTraits } from '../game/traits';
 import { LIMITS } from '../game/state';
 import type { SaveData } from '../game/types';
 import {
+  TACTICS,
   ARC_ACTS,
   CARE_ACTIONS,
   CHAT_ROLES,
@@ -128,6 +129,18 @@ const KinlingSchema = CreatureSchema.extend({
     lastBeatAt: time,
     awarenessDay: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/),
     awarenessToday: z.number().finite().min(0).max(100),
+    promisedAt: time,
+    tacticDay: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/),
+    tacticCounts: recordOf(TACTICS, count),
+    lastPersuasion: z
+      .object({
+        at: time,
+        tactic: z.enum(TACTICS),
+        believed: z.boolean(),
+        weight: unit,
+        applied: z.partialRecord(z.enum(['devotion', 'fear', 'defiance', 'awareness', 'distress']), z.number().finite().min(-100).max(100)),
+      })
+      .nullable(),
   }),
 });
 

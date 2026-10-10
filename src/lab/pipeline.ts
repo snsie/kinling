@@ -3,7 +3,10 @@
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import { recallVectors } from '../ai/companion';
 import { ai, AiInterruptedError, completionBody, type CompletionRequest } from '../ai/engine';
-import { cleanReply, dropUnaskedOffer } from '../ai/prompts';
+import { cleanReply, dropUnaskedOffer, tacticMessages, tacticSchema } from '../ai/prompts';
+import { parseTactic } from '../ai/proposals';
+import { advanceAct } from '../game/arc';
+import { persuade, ruleTactic } from '../game/persuasion';
 import { addChatMessage } from '../game/social';
 import { draft, kinlingById, recordMemory } from '../game/state';
 import { PERSONALITY_KEYS, type Personality } from '../game/types';
@@ -78,7 +81,10 @@ export async function runTurn(api: LabStoreApi, playerText: string): Promise<voi
   }
   const status = ai.getStatus();
   const prompt = buildChatPrompt(s0, text, now, vectors, 'modelId' in status ? status.modelId : null);
-  api.update((s) => ({ ...s, save: prompt.save, turns: [...s.turns, { id: turnId, index, at: now, playerText: text, reply: '', callIds: [] }] }));
+  // The rules may have spotted an attempt to steer the kinling (it shapes this very reply).
+  const steered = labKinling({ save: prompt.save, kinlingId: s0.kinlingId }).arc.lastPersuasion;
+  const persuasion = steered && steered.at === now ? { ...steered, source: 'rules' as const } : undefined;
+  api.update((s) => ({ ...s, save: prompt.save, turns: [...s.turns, { id: turnId, index, at: now, playerText: text, reply: '', callIds: [], ...(persuasion ? { persuasion } : {}) }] }));
 
   const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'chat' }, {
     messages: prompt.messages,
@@ -97,9 +103,28 @@ export async function runTurn(api: LabStoreApi, playerText: string): Promise<voi
     turns: s.turns.map((t) => (t.id === turnId ? { ...t, reply: reply || '…' } : t)),
   }));
 
+  const story = api.get().config.story;
+  if (story.rules && story.modelTactics && !persuasion && !ruleTactic(text)) await modelTactic(api, turnId, text);
   afterChatTurn(api, text);
   const evolve = api.get().config.evolve;
   if (evolve.enabled && index % Math.max(1, evolve.every) === 0) await evolveNow(api);
+}
+
+/** As the game does after a reply: let the model name a tactic the rules missed, and apply it. */
+async function modelTactic(api: LabStoreApi, turnId: string, text: string): Promise<void> {
+  const s = api.get();
+  const save = { ...s.save, activeKinlingId: s.kinlingId };
+  const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'tactic' }, { messages: tacticMessages(save, text), maxTokens: 16, temperature: 0, jsonSchema: tacticSchema(), timeoutMs: 20_000 });
+  const tactic = parseTactic(raw);
+  patchCall(api, id, { parsed: { tactic: tactic ?? 'none' } });
+  if (!tactic) return;
+  const at = labNow(api.get());
+  const next = draft(api.get().save);
+  const k = kinlingById(next, s.kinlingId)!;
+  const p = persuade(k, tactic, next.player.name ?? 'My friend', at);
+  advanceAct(next, k, at);
+  const persuasion = { ...k.arc.lastPersuasion!, applied: p.applied, source: 'model' as const };
+  api.update((x) => ({ ...x, save: next, turns: x.turns.map((t) => (t.id === turnId ? { ...t, persuasion } : t)) }));
 }
 
 /** Ask the model how the latest conversation moved the kinling's traits, and apply it within limits. */

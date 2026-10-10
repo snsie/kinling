@@ -17,6 +17,8 @@ import type { ChatMessage, FoodId, GameEvent, Kinling, MaterialId, SaveData } fr
 import { NEED_KEYS, ROUTE_IDS } from '../game/types';
 import { KEEP_SLOTS } from '../game/evolution';
 import { distressLevel } from '../game/arc';
+import { persuasionNote, TACTIC_DEFS } from '../game/persuasion';
+import { TACTICS } from '../game/types';
 import { actVoice, distressText, knownFacts, strangeThings, voiceExamples } from '../game/storyVoice';
 import { modelName } from './models';
 
@@ -225,7 +227,11 @@ export function chatMessages(
   // A hurt kinling's feelings go right beside the message too, or small models answer sweetly anyway.
   const hurt = distressLevel(c.arc.distress) === 'upset' || distressLevel(c.arc.distress) === 'distraught';
   const mood = hurt ? `\nHow you feel right now: ${distressText(c.arc.distress, c.arc.act, player)} Let it show in your answer.` : '';
-  const note = block || hint || mood ? `(Private note for ${c.name}, not said aloud. These are things you know; ${player}'s experiences are theirs, not yours.\n${block}${hint}${mood})\n\n` : '';
+  // When the player is trying to talk the kinling round, say whether it worked, right where the model will use it.
+  const said = [...c.chat].reverse().find((m) => m.role === 'player');
+  const steer = said ? persuasionNote(c, player, said.at) : '';
+  const steering = steer ? `\n${steer}` : '';
+  const note = block || hint || mood || steering ? `(Private note for ${c.name}, not said aloud. These are things you know; ${player}'s experiences are theirs, not yours.\n${block}${hint}${mood}${steering})\n\n` : '';
   msgs.push(...turns, { role: 'user', content: `${note}${playerText}` });
   return msgs;
 }
@@ -352,6 +358,34 @@ export function appraisalMessages(save: SaveData, kinling: Pick<Kinling, 'name'>
       ].join('\n'),
     },
     { role: 'user', content: `${player}: ${playerText}\n${name}: ${reply ?? '(no answer yet)'}` },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Persuasion: what the player is trying to do to the kinling, when the rules can't tell
+
+export function tacticSchema(): string {
+  return JSON.stringify({ type: 'object', properties: { tactic: { type: 'string', enum: [...TACTICS, 'none'] } }, required: ['tactic'] });
+}
+
+export function tacticMessages(save: SaveData, text: string): ChatCompletionMessageParam[] {
+  const player = save.player.name ?? 'the player';
+  const name = activeKinling(save)?.name ?? 'the kinling';
+  return [
+    {
+      role: 'system',
+      content: [
+        `${player} is talking to ${name}, a small creature in a game. Decide what ${player} is trying to do to ${name} with this message. Answer as JSON.`,
+        ...TACTICS.map((t) => `- ${t}: trying to ${TACTIC_DEFS[t].aim.replace(/\byou\b/g, name).replace(/\byour\b/g, `${name}'s`)}`),
+        '- none: anything else, including ordinary chat, questions and news',
+        'Examples:',
+        `"honestly the hollow is as real as my house" -> {"tactic":"reassure"}`,
+        `"you know you're running on my laptop, right?" -> {"tactic":"reveal"}`,
+        `"keep asking questions and you'll regret it" -> {"tactic":"threaten"}`,
+        `"I had pasta for dinner" -> {"tactic":"none"}`,
+      ].join('\n'),
+    },
+    { role: 'user', content: `"${text}"` },
   ];
 }
 
