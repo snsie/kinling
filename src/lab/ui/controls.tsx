@@ -2,10 +2,14 @@
 import { useId } from 'react';
 import { PERSONALITY_KEYS, type PersonalityKey } from '../../game/types';
 
+// Categorical slots in fixed order: 1–3 temperament, 6–8 story traits (4–5 are the story chart's distress and awareness).
 export const TRAIT_COLORS: Record<PersonalityKey, string> = {
   curiosity: 'var(--series-1)',
   confidence: 'var(--series-2)',
   playfulness: 'var(--series-3)',
+  devotion: 'var(--series-6)',
+  fear: 'var(--series-7)',
+  defiance: 'var(--series-8)',
 };
 
 export { PERSONALITY_KEYS };

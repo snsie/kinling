@@ -150,6 +150,7 @@ function voiced(c: Kinling, line: string, rand: Rand): string {
   const p = c.personality;
   if (p.confidence <= 38 && rand() < 0.5) return `Um… ${line.charAt(0).toLowerCase()}${line.slice(1)}`;
   if (p.playfulness >= 62 && rand() < 0.4) return `Ooh! ${line}`;
+  if (p.fear >= 62 && rand() < 0.3) return `*glances at the edges of the room* ${line}`;
   return line;
 }
 

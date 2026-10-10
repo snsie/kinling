@@ -9,7 +9,11 @@
 // v4 memories had no feeling or personality influence, and kinlings did not
 // turn chat into memories or reflect on them.
 // v5 kinlings had no story arc, and there was no story-effects setting.
+// v6 personalities had no story traits (devotion, fear, defiance).
+import { shiftStoryTraits, STORY_SHIFTS } from '../game/arc';
+import { EGGS } from '../game/catalog';
 import { newArc, playerFeelingFromBond } from '../game/state';
+import { ARC_ACTS, STORY_TRAIT_KEYS, type ArcAct, type EggType, type Personality } from '../game/types';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
 import type { SaveData } from '../game/types';
 import { validateSave } from './schema';
@@ -98,6 +102,33 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
     const kinlings = (Array.isArray(v5.kinlings) ? v5.kinlings : []).map((raw) => ({ ...(raw as AnyRecord), arc: { ...newArc(at), awarenessDay: '' } }));
     const settings = (v5.settings ?? {}) as AnyRecord;
     return { ...v5, kinlings, settings: { ...settings, story: { effects: true } }, schemaVersion: 6 };
+  },
+  6: (v6) => {
+    const zeros = Object.fromEntries(STORY_TRAIT_KEYS.map((k) => [k, 0]));
+    const withZeros = (r: unknown) => ({ ...(r as AnyRecord), ...zeros });
+    const kinlings = (Array.isArray(v6.kinlings) ? v6.kinlings : []).map((raw) => {
+      const k = raw as AnyRecord;
+      const egg = (k.egg as EggType) in EGGS ? (k.egg as EggType) : 'woodland';
+      const start = Object.fromEntries(STORY_TRAIT_KEYS.map((key) => [key, EGGS[egg].personality[key]])) as Personality;
+      // A kinling already into the story carries the marks of the acts it has lived through.
+      const now = { ...start };
+      const act = ((k.arc as AnyRecord | undefined)?.act ?? 'devotion') as ArcAct;
+      for (const a of ARC_ACTS.slice(1, ARC_ACTS.indexOf(act) + 1)) shiftStoryTraits(now, STORY_SHIFTS.act[a as Exclude<ArcAct, 'devotion'>]);
+      const daily = (k.socialDaily ?? {}) as AnyRecord;
+      return {
+        ...k,
+        personality: { ...(k.personality as AnyRecord), ...Object.fromEntries(STORY_TRAIT_KEYS.map((key) => [key, now[key]])) },
+        baseline: { ...(k.baseline as AnyRecord), ...Object.fromEntries(STORY_TRAIT_KEYS.map((key) => [key, start[key]])) },
+        memories: (Array.isArray(k.memories) ? k.memories : []).map((m) => ({ ...(m as AnyRecord), influence: withZeros((m as AnyRecord).influence) })),
+        socialDaily: {
+          ...daily,
+          personalityDelta: withZeros(daily.personalityDelta),
+          socialPersonality: withZeros(daily.socialPersonality),
+          reflectPersonality: withZeros(daily.reflectPersonality),
+        },
+      };
+    });
+    return { ...v6, kinlings, schemaVersion: 7 };
   },
 };
 

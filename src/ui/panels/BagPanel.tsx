@@ -124,6 +124,12 @@ export function BagPanel({ save }: { save: SaveData }) {
           <Bar value={c.personality.confidence} color="var(--coral)" label="Confidence" />
           <span>Playfulness{sinceHatching('playfulness')}</span>
           <Bar value={c.personality.playfulness} color="var(--gold)" label="Playfulness" />
+          <span>Devotion{sinceHatching('devotion')}</span>
+          <Bar value={c.personality.devotion} color="var(--moss)" label="Devotion" />
+          <span>Fear{sinceHatching('fear')}</span>
+          <Bar value={c.personality.fear} color="var(--lilac)" label="Fear" />
+          <span>Defiance{sinceHatching('defiance')}</span>
+          <Bar value={c.personality.defiance} color="var(--danger)" label="Defiance" />
           <span>Woodland</span>
           <Bar value={c.affinities.woodland} color="var(--moss)" label="Woodland affinity" />
           <span>Aquatic</span>

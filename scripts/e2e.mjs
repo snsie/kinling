@@ -333,7 +333,7 @@ await step('export backup produces a validated JSON file', async () => {
   const path = await download.path();
   exported = JSON.parse(readFileSync(path, 'utf8'));
   expect(exported.format === 'kinling-save', 'format tag');
-  expect(exported.save.schemaVersion === 6, 'schema version');
+  expect(exported.save.schemaVersion === 7, 'schema version');
   expect(exported.save.kinlings[0].name === 'Mochi', 'kinling name');
   writeFileSync(join(OUT, 'exported-save.json'), JSON.stringify(exported, null, 2));
   return `${download.suggestedFilename()} (${JSON.stringify(exported).length} bytes)`;
@@ -386,7 +386,9 @@ function withFourKinlings(file) {
     ['Fig', { curiosity: 66, confidence: 55, playfulness: 40 }],
     ['Luma', { curiosity: 52, confidence: 47, playfulness: 58 }],
   ];
-  for (const [i, [name, personality]] of extras.entries()) {
+  for (const [i, [name, temperament]] of extras.entries()) {
+    // Story traits come from the first kinling; temperament is set per sibling.
+    const personality = { ...base.personality, ...temperament };
     s.kinlings.push({
       ...structuredClone(base),
       id: `kin_e2e_${i}`,
@@ -399,7 +401,7 @@ function withFourKinlings(file) {
       chatSummary: null,
       appearanceHistory: [],
       careLog: { feed: [], groom: [], rest: [], play: [] },
-      socialDaily: { ...base.socialDaily, socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 }, feelingDelta: {} },
+      socialDaily: { ...base.socialDaily, socialPersonality: Object.fromEntries(Object.keys(base.personality).map((k) => [k, 0])), feelingDelta: {} },
     });
   }
   s.feelings = s.feelings.filter((f) => f.to === 'player');

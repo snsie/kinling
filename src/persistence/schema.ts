@@ -21,6 +21,7 @@ import {
   MOTION_PREFS,
   ONBOARDING_STEPS,
   PATTERN_IDS,
+  PERSONALITY_KEYS,
   PLAYER_ID,
   ROUTE_IDS,
   SAVE_SCHEMA_VERSION,
@@ -52,7 +53,7 @@ export const AppearanceSchema = z.object({
   wings: z.boolean(),
 });
 
-const PersonalitySchema = z.object({ curiosity: percent, confidence: percent, playfulness: percent });
+const PersonalitySchema = recordOf(PERSONALITY_KEYS, percent);
 const nudge = z.number().int().min(-2).max(2);
 
 const CreatureSchema = z.object({
@@ -86,7 +87,7 @@ const MemorySchema = z.object({
   pinned: z.boolean(),
   private: z.boolean(),
   valence: nudge,
-  influence: z.object({ curiosity: nudge, confidence: nudge, playfulness: nudge }),
+  influence: recordOf(PERSONALITY_KEYS, nudge),
 });
 
 const careLog = z.array(time).max(20);
@@ -109,11 +110,11 @@ const KinlingSchema = CreatureSchema.extend({
   careLog: z.object(Object.fromEntries(CARE_ACTIONS.map((a) => [a, careLog])) as Record<(typeof CARE_ACTIONS)[number], typeof careLog>),
   socialDaily: z.object({
     day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    personalityDelta: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
+    personalityDelta: recordOf(PERSONALITY_KEYS, personalityDelta),
     chatBond: z.number().finite().min(0).max(100),
-    socialPersonality: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
+    socialPersonality: recordOf(PERSONALITY_KEYS, personalityDelta),
     feelingDelta: z.record(id, z.object({ warmth: z.number().finite().min(-100).max(100), trust: z.number().finite().min(-100).max(100) })).refine((r) => Object.keys(r).length <= LIMITS.kinlings, { message: 'Too many entries' }),
-    reflectPersonality: z.object({ curiosity: personalityDelta, confidence: personalityDelta, playfulness: personalityDelta }),
+    reflectPersonality: recordOf(PERSONALITY_KEYS, personalityDelta),
   }),
   appraisedThroughId: id.nullable(),
   lastReflectionAt: time,

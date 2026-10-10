@@ -16,7 +16,7 @@ import { offlineChatReply } from '../src/game/dialogue';
 import { growthLines, personalityVoice, relationshipLine, siblingLines } from '../src/game/persona';
 import { recall, whenLabel, type RecallItem } from '../src/game/recall';
 import { addChatMessage, addPlayerFact, firstPerson, forgetMemory } from '../src/game/social';
-import { feelingOf, recordMemory } from '../src/game/state';
+import { feelingOf, noInfluence, recordMemory } from '../src/game/state';
 import { PLAYER_ID, type SaveData } from '../src/game/types';
 import { chatMessages, creatureSystemPrompt, dropRepeatedTail, dropUnaskedOffer, repeatsRecent } from '../src/ai/prompts';
 import { parseAppraisal } from '../src/ai/proposals';
@@ -239,15 +239,15 @@ describe('reflection', () => {
     let s = hatchedSave();
     const k = kin(s);
     // Many strong memories at once still move a trait at most maxStep, then dailyCap per day.
-    for (let i = 0; i < 10; i++) recordMemory(k, { kind: 'player-chat', text: `brave ${i}`, tags: [], importance: 3, influence: { curiosity: 0, confidence: 2, playfulness: 0 } }, T0 + i);
+    for (let i = 0; i < 10; i++) recordMemory(k, { kind: 'player-chat', text: `brave ${i}`, tags: [], importance: 3, influence: { ...noInfluence(), confidence: 2 } }, T0 + i);
     s = reflect(s, k.id, T0 + HOUR).save;
     expect(kin(s).personality.confidence - k.baseline.confidence).toBe(REFLECTION.maxStep);
-    for (let i = 0; i < 10; i++) recordMemory(kin(s), { kind: 'player-chat', text: `more brave ${i}`, tags: [], importance: 3, influence: { curiosity: 0, confidence: 2, playfulness: 0 } }, T0 + 2 * HOUR + i);
+    for (let i = 0; i < 10; i++) recordMemory(kin(s), { kind: 'player-chat', text: `more brave ${i}`, tags: [], importance: 3, influence: { ...noInfluence(), confidence: 2 } }, T0 + 2 * HOUR + i);
     s = reflect(s, k.id, T0 + 3 * HOUR).save;
     expect(kin(s).personality.confidence - k.baseline.confidence).toBe(REFLECTION.dailyCap);
     // Day after day, it stops at the lifetime limit.
     for (let day = 1; day <= 12; day++) {
-      for (let i = 0; i < 4; i++) recordMemory(kin(s), { kind: 'player-chat', text: `day ${day} ${i}`, tags: [], importance: 3, influence: { curiosity: 0, confidence: 2, playfulness: 0 } }, T0 + day * 24 * HOUR + i);
+      for (let i = 0; i < 4; i++) recordMemory(kin(s), { kind: 'player-chat', text: `day ${day} ${i}`, tags: [], importance: 3, influence: { ...noInfluence(), confidence: 2 } }, T0 + day * 24 * HOUR + i);
       s = reflect(s, k.id, T0 + day * 24 * HOUR + HOUR).save;
     }
     expect(kin(s).personality.confidence - k.baseline.confidence).toBe(REFLECTION.driftLimit);
@@ -263,7 +263,7 @@ describe('reflection', () => {
 
 describe('persona', () => {
   it('describes how personality sounds', () => {
-    expect(personalityVoice({ curiosity: 80, confidence: 20, playfulness: 50 }).join(' ')).toMatch(/very curious.*shy.*bit of fun/);
+    expect(personalityVoice({ curiosity: 80, confidence: 20, playfulness: 50, devotion: 70, fear: 10, defiance: 10 }).join(' ')).toMatch(/very curious.*shy.*bit of fun/);
   });
 
   it('describes the relationship with the player', () => {

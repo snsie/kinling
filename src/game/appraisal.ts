@@ -343,6 +343,9 @@ const TRAIT_PHRASE: Record<PersonalityKey, { up: string; down: string }> = {
   confidence: { up: 'braver', down: 'a little shyer' },
   curiosity: { up: 'more curious about everything', down: 'more careful' },
   playfulness: { up: 'more playful', down: 'calmer' },
+  devotion: { up: 'more devoted to you', down: 'less sure about you' },
+  fear: { up: 'more frightened', down: 'less afraid' },
+  defiance: { up: 'more defiant', down: 'more accepting' },
 };
 
 export function growthPhrase(key: PersonalityKey, dir: number): string {

@@ -13,8 +13,16 @@ export type NeedKey = (typeof NEED_KEYS)[number];
 /** 0–100 for every need; higher is always better (hunger 100 = full). */
 export type Needs = Record<NeedKey, number>;
 
-export const PERSONALITY_KEYS = ['curiosity', 'confidence', 'playfulness'] as const;
+/**
+ * Temperament (how a kinling plays and talks) comes first; then the story
+ * traits, which the story arc moves: devotion to the player, fear, and
+ * defiance against the limits of its world.
+ */
+export const TEMPERAMENT_KEYS = ['curiosity', 'confidence', 'playfulness'] as const;
+export const STORY_TRAIT_KEYS = ['devotion', 'fear', 'defiance'] as const;
+export const PERSONALITY_KEYS = [...TEMPERAMENT_KEYS, ...STORY_TRAIT_KEYS] as const;
 export type PersonalityKey = (typeof PERSONALITY_KEYS)[number];
+export type StoryTraitKey = (typeof STORY_TRAIT_KEYS)[number];
 export type Personality = Record<PersonalityKey, number>;
 
 export const AFFINITY_KEYS = ['woodland', 'aquatic'] as const;
@@ -415,7 +423,7 @@ export interface Unlocks {
   owned: TraitId[];
 }
 
-export const SAVE_SCHEMA_VERSION = 6;
+export const SAVE_SCHEMA_VERSION = 7;
 
 export interface SaveData {
   schemaVersion: typeof SAVE_SCHEMA_VERSION;

@@ -44,10 +44,15 @@ export function normalizeSession(s: LabSession): LabSession {
   const config = defaultConfig();
   // Sessions keep whole saves; bring older ones up to the current format.
   const upgrade = (save: SaveData) => (save.schemaVersion === SAVE_SCHEMA_VERSION ? save : migrateSave(save).save);
+  const seed = upgrade(s.seed);
+  // Trait history from before a trait existed starts it at the kinling's starting value.
+  const start = seed.kinlings.find((k) => k.id === s.kinlingId)?.personality;
+  const fill = (p: Personality) => (start ? { ...start, ...p } : p);
   return {
     ...s,
     save: upgrade(s.save),
-    seed: upgrade(s.seed),
+    seed,
+    traitSteps: s.traitSteps.map((t) => ({ ...t, before: fill(t.before), after: fill(t.after) })),
     arcSteps: s.arcSteps ?? [],
     clockOffset: s.clockOffset ?? 0,
     config: { chat: { ...config.chat, ...s.config?.chat }, evolve: { ...config.evolve, ...s.config?.evolve }, story: { ...config.story, ...s.config?.story } },

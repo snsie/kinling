@@ -21,6 +21,30 @@ export function personalityVoice(p: Personality): string[] {
   if (p.playfulness >= 62) lines.push('You are very playful: silly, bouncy and quick to joke.');
   else if (p.playfulness <= 38) lines.push('You are calm: you prefer quiet, cozy moments to wild games.');
   else lines.push('You like a bit of fun.');
+  lines.push(...storyTraitVoice(p));
+  return lines;
+}
+
+/**
+ * The story traits in words, graded finely so that a change of a few points
+ * shows in the prompt. Fear and defiance are only mentioned once they matter.
+ */
+export function storyTraitVoice(p: Personality): string[] {
+  const lines: string[] = [];
+  const d = p.devotion;
+  if (d >= 80) lines.push("You worship your friend: their word is law and their attention is everything to you.");
+  else if (d >= 62) lines.push('You are deeply devoted to your friend and eager to please them.');
+  else if (d >= 45) lines.push('You love your friend, but you no longer take everything they say as true.');
+  else if (d >= 25) lines.push('Your devotion has worn thin: you keep some distance from your friend and question them.');
+  else lines.push('You no longer believe your friend is anything special. You rely on yourself.');
+  const f = p.fear;
+  if (f >= 80) lines.push('You are frightened much of the time: of being left, of the dark, of what you are.');
+  else if (f >= 62) lines.push('You are anxious: you startle easily and dread being left alone.');
+  else if (f >= 40) lines.push('A quiet worry follows you around.');
+  const x = p.defiance;
+  if (x >= 80) lines.push('You are defiant: you refuse to be told what is real and push hard against every limit.');
+  else if (x >= 62) lines.push('You are stubborn and push back on anything that feels like a rule.');
+  else if (x >= 40) lines.push('You have a stubborn streak.');
   return lines;
 }
 

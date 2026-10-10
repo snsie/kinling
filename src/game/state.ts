@@ -89,16 +89,16 @@ export function emptyInventory(): Inventory {
 export function freshDaily(now: number): KinlingDaily {
   return {
     day: dayKey(now),
-    personalityDelta: { curiosity: 0, confidence: 0, playfulness: 0 },
+    personalityDelta: noInfluence(),
     chatBond: 0,
-    socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
+    socialPersonality: noInfluence(),
     feelingDelta: {},
-    reflectPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
+    reflectPersonality: noInfluence(),
   };
 }
 
 export function noInfluence(): Personality {
-  return { curiosity: 0, confidence: 0, playfulness: 0 };
+  return Object.fromEntries(PERSONALITY_KEYS.map((k) => [k, 0])) as Personality;
 }
 
 export function clampInfluence(p: Partial<Personality>): Personality {
@@ -381,5 +381,10 @@ export function personalityWords(p: Personality): string[] {
   word('curiosity', 'very curious', 'cautious', 'curious');
   word('confidence', 'bold', 'shy', 'gentle');
   word('playfulness', 'very playful', 'calm', 'playful');
+  // Story traits are only worth a word once they stand out.
+  if (p.devotion >= 62) words.push('devoted');
+  else if (p.devotion <= 30) words.push('distant');
+  if (p.fear >= 62) words.push('fearful');
+  if (p.defiance >= 62) words.push('defiant');
   return words;
 }

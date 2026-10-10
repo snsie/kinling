@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { extractJson } from '../ai/proposals';
 import { clamp } from '../game/util';
-import { PERSONALITY_KEYS, type Personality } from '../game/types';
+import { PERSONALITY_KEYS, type Personality, type PersonalityKey } from '../game/types';
 import type { EvolveConfig } from './types';
 
 export interface TraitProposal {
@@ -16,15 +16,13 @@ export function evolveSchema(range: number): string {
   const trait = { type: 'integer', enum: values };
   return JSON.stringify({
     type: 'object',
-    properties: { curiosity: trait, confidence: trait, playfulness: trait, reason: { type: 'string' } },
-    required: ['curiosity', 'confidence', 'playfulness', 'reason'],
+    properties: { ...Object.fromEntries(PERSONALITY_KEYS.map((k) => [k, trait])), reason: { type: 'string' } },
+    required: [...PERSONALITY_KEYS, 'reason'],
   });
 }
 
 const ProposalSchema = z.object({
-  curiosity: z.coerce.number().optional(),
-  confidence: z.coerce.number().optional(),
-  playfulness: z.coerce.number().optional(),
+  ...(Object.fromEntries(PERSONALITY_KEYS.map((k) => [k, z.coerce.number().optional()])) as Record<PersonalityKey, z.ZodOptional<z.ZodCoercedNumber>>),
   reason: z.string().max(400).optional().default(''),
 });
 

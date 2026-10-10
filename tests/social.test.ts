@@ -76,8 +76,8 @@ describe('social outcome bounds', () => {
     const [a, b] = s.kinlings.map((k) => k.id) as [string, string];
     for (const f of s.feelings) f.warmth = 90;
     const gap = (x: SaveData) => PERSONALITY_KEYS.reduce((sum, t) => sum + Math.abs(kinlingById(x, a)!.personality[t] - kinlingById(x, b)!.personality[t]), 0);
-    kinlingById(s, b)!.personality = { curiosity: 90, confidence: 90, playfulness: 90 };
-    kinlingById(s, b)!.baseline = { curiosity: 90, confidence: 90, playfulness: 90 };
+    kinlingById(s, b)!.personality = { ...kinlingById(s, b)!.personality, curiosity: 90, confidence: 90, playfulness: 90 };
+    kinlingById(s, b)!.baseline = { ...kinlingById(s, b)!.baseline, curiosity: 90, confidence: 90, playfulness: 90 };
     for (let day = 0; day < 60; day++) {
       for (let i = 0; i < 10; i++) applySocialOutcome(s, { a, b, topic: 'play', feelings: { aToB: { warmth: 1, trust: 1 }, bToA: { warmth: 1, trust: 1 } }, memoryA: null, memoryB: null }, T0 + day * 24 * HOUR + i * 20 * MIN);
     }

@@ -26,9 +26,12 @@ export const DEFAULT_EVOLVE_SYSTEM = `You decide how a kinling's personality shi
 - curiosity: low = cautious, likes familiar things; high = asks questions, loves new things
 - confidence: low = shy and hesitant; high = bold, speaks up
 - playfulness: low = calm and quiet; high = silly, bouncy, quick to joke
-For each trait give a whole-number change from -{{range}} to {{range}}. Use 0 when the conversation says nothing about that trait. Most conversations move one trait at most.
+- devotion: low = distant, trusts only itself; high = worships {{player}}, wants to please them
+- fear: low = at ease; high = frightened of being left, of the dark, of what it is
+- defiance: low = accepting, does as told; high = pushes back and tests every limit
+For each trait give a whole-number change from -{{range}} to {{range}}. Use 0 when the conversation says nothing about that trait. Most conversations move one or two traits at most.
 Then give a reason: one short sentence in {{name}}'s own voice, starting with "I", naming what {{player}} said or did that made {{name}} feel this way.
-Answer with JSON only: {"curiosity": n, "confidence": n, "playfulness": n, "reason": "..."}`;
+Answer with JSON only: {"curiosity": n, "confidence": n, "playfulness": n, "devotion": n, "fear": n, "defiance": n, "reason": "..."}`;
 
 export const DEFAULT_EVOLVE_USER = `{{name}} right now: {{traitNumbers}}.
 Recent conversation:
@@ -54,7 +57,7 @@ export function defaultConfig(): LabConfig {
       systemTemplate: DEFAULT_EVOLVE_SYSTEM,
       userTemplate: DEFAULT_EVOLVE_USER,
       temperature: 0.3,
-      maxTokens: 120,
+      maxTokens: 160,
       proposalRange: 3,
       maxStep: 3,
       driftLimit: 40,

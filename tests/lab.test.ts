@@ -13,7 +13,7 @@ import { growthNotes, labKinling, renderTemplate, templateVars } from '../src/la
 import type { LabSession, TraitStep } from '../src/lab/types';
 import { HOUR, hatchedSave, kin, T0 } from './helpers';
 
-const base = { curiosity: 50, confidence: 50, playfulness: 50 };
+const base = { curiosity: 50, confidence: 50, playfulness: 50, devotion: 50, fear: 50, defiance: 50 };
 
 function withTurn(s: LabSession, playerText: string, reply: string): LabSession {
   let save = addChatMessage(s.save, s.kinlingId, 'player', playerText, 'player', T0);
@@ -54,13 +54,13 @@ describe('trait proposals', () => {
   it('applies changes within the step cap, drift limit and 0–100', () => {
     const limits = { maxStep: 2, driftLimit: 5 };
     expect(applyDeltas(base, base, { curiosity: 3, confidence: -1, playfulness: 0 }, limits)).toEqual({
-      after: { curiosity: 52, confidence: 49, playfulness: 50 },
+      after: { ...base, curiosity: 52, confidence: 49 },
       applied: { curiosity: 2, confidence: -1 },
     });
     // At the drift limit: no further out, but back in is fine.
-    const edge = { curiosity: 55, confidence: 45, playfulness: 50 };
+    const edge = { ...base, curiosity: 55, confidence: 45 };
     expect(applyDeltas(edge, base, { curiosity: 2, confidence: 2 }, limits).applied).toEqual({ confidence: 2 });
-    const low = { curiosity: 1, confidence: 50, playfulness: 50 };
+    const low = { ...base, curiosity: 1 };
     expect(applyDeltas(low, { ...low }, { curiosity: -2 }, { maxStep: 5, driftLimit: 50 }).after.curiosity).toBe(0);
   });
 });
@@ -96,7 +96,7 @@ describe('lab prompts', () => {
   });
 
   it('custom mode renders the template with live traits and growth notes, then recent messages', () => {
-    let s = freshSession({ egg: 'woodland', name: 'Pip', player: 'Ana', personality: { curiosity: 70, confidence: 30, playfulness: 50 } }, T0);
+    let s = freshSession({ egg: 'woodland', name: 'Pip', player: 'Ana', personality: { ...base, curiosity: 70, confidence: 30 } }, T0);
     s = withTurn(s, 'hello', 'hi Ana!');
     s = { ...s, traitSteps: [step('I feel braver.', { confidence: 1 })], config: { ...s.config, chat: { ...s.config.chat, promptMode: 'custom', historyMessages: 6 } } };
     const { messages } = buildChatPrompt(s, 'how are you?', T0);
@@ -126,10 +126,10 @@ describe('lab prompts', () => {
   });
 
   it('fresh sessions start from the chosen traits', () => {
-    const s = freshSession({ egg: 'celestial', name: 'Luma', player: 'Sam', personality: { curiosity: 10, confidence: 90, playfulness: 40 } }, T0);
+    const s = freshSession({ egg: 'celestial', name: 'Luma', player: 'Sam', personality: { ...base, curiosity: 10, confidence: 90, playfulness: 40 } }, T0);
     const k = labKinling(s);
     expect(k.name).toBe('Luma');
-    expect(k.personality).toEqual({ curiosity: 10, confidence: 90, playfulness: 40 });
+    expect(k.personality).toEqual({ ...base, curiosity: 10, confidence: 90, playfulness: 40 });
     expect(k.baseline).toEqual(k.personality);
     expect(s.save.player.name).toBe('Sam');
     expect(s.seed).not.toBe(s.save);

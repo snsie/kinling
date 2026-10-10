@@ -197,3 +197,75 @@ describe('saves', () => {
     expect(parseImport(text).ok).toBe(true);
   });
 });
+
+describe('story traits', () => {
+  it('hatch from the egg: devoted, unafraid and accepting', () => {
+    expect(kin(hatchedSave()).personality).toMatchObject({ devotion: 72, fear: 15, defiance: 8 });
+  });
+
+  it('each act reshapes them', () => {
+    const s = hatchedSave();
+    const k = kin(s);
+    k.bond = bondForLevel(ARC.minLevel.awakening);
+    k.arc.awareness = ARC.threshold.doubt;
+    advanceAct(s, k, T0);
+    expect(k.personality).toMatchObject({ devotion: 66, fear: 15, defiance: 12 });
+    k.arc.awareness = ARC.threshold.awakening;
+    advanceAct(s, k, T0);
+    expect(k.personality).toMatchObject({ devotion: 60, fear: 21, defiance: 18 });
+  });
+
+  it('being left until upset, then distraught, frightens the kinling and wears down its devotion', () => {
+    const s = hatchedSave();
+    kin(s).arc.lastCareAt = s.lastTickAt;
+    const k = kin(tick(s, s.lastTickAt + 30 * HOUR).save);
+    expect(k.arc.distress).toBeGreaterThanOrEqual(70);
+    expect(k.personality).toMatchObject({ devotion: 72 - 3 - 2, fear: 15 + 3 + 3, defiance: 8 + 2 });
+  });
+
+  it('care deepens devotion early in the story, but not once it is awake', () => {
+    let s = hatchedSave();
+    s = performCare(s, kin(s).id, 'groom', T0 + HOUR).save;
+    expect(kin(s).personality.devotion).toBe(73);
+    s = inAct('awakening');
+    const before = kin(s).personality.devotion;
+    s = performCare(s, kin(s).id, 'groom', T0 + HOUR).save;
+    expect(kin(s).personality.devotion).toBe(before);
+  });
+
+  it('hurtful words frighten it', () => {
+    const start = hatchedSave();
+    const s = arcChat(start, kin(start).id, 'you are stupid and I hate you', T0);
+    expect(kin(s).personality).toMatchObject({ fear: 16, devotion: 71 });
+  });
+
+  it('the prompt voices them in fine steps', () => {
+    const s = hatchedSave();
+    const k = kin(s);
+    expect(creatureSystemPrompt(s, 'hi', T0)).toMatch(/deeply devoted to your friend/);
+    k.personality.devotion = 50;
+    k.personality.fear = 65;
+    k.personality.defiance = 85;
+    const sys = creatureSystemPrompt(s, 'hi', T0);
+    expect(sys).toMatch(/no longer take everything they say as true/);
+    expect(sys).toMatch(/dread being left alone/);
+    expect(sys).toMatch(/refuse to be told what is real/);
+  });
+
+  it('older saves get story traits that match how far their kinling has come', () => {
+    const s = inAct('awakening');
+    const v6 = structuredClone(s) as unknown as { schemaVersion: number; kinlings: { personality: Record<string, number>; baseline: Record<string, number>; memories: { influence: Record<string, number> }[] }[] };
+    v6.schemaVersion = 6;
+    for (const k of v6.kinlings) {
+      for (const key of ['devotion', 'fear', 'defiance']) {
+        delete k.personality[key];
+        delete k.baseline[key];
+        for (const m of k.memories) delete m.influence[key];
+      }
+    }
+    const k = kin(migrateSave(v6).save);
+    expect(k.baseline).toMatchObject({ devotion: 72, fear: 15, defiance: 8 });
+    expect(k.personality).toMatchObject({ devotion: 60, fear: 21, defiance: 18 });
+    expect(k.memories[0]!.influence).toMatchObject({ devotion: 0, fear: 0, defiance: 0 });
+  });
+});

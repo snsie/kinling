@@ -8,9 +8,9 @@
 //   things the kinling notices. Enough of it, at a high enough level, moves the
 //   kinling into the next act. A daily cap spreads the story over days of play.
 import { levelFor } from './stage';
-import { draft, kinlingById, recordEvent, recordMemory } from './state';
+import { draft, kinlingById, nudgePersonality, recordEvent, recordMemory } from './state';
 import { ruleAppraisal, type FeelingWord } from './appraisal';
-import type { ArcAct, Kinling, SaveData } from './types';
+import type { ArcAct, Kinling, Personality, SaveData, StoryTraitKey } from './types';
 import { ARC_ACTS } from './types';
 import { clamp, dayKey } from './util';
 
@@ -47,6 +47,29 @@ export const ARC = {
   /** Minimum time between story beats (act openings excepted). */
   beatGapMs: 20 * 60_000,
 } as const;
+
+/**
+ * How the story moves the story traits. Entering an act reshapes the kinling;
+ * being left until upset or distraught frightens it and wears its devotion
+ * down; being cared for early in the story deepens its devotion.
+ */
+export const STORY_SHIFTS = {
+  act: {
+    doubt: { devotion: -6, defiance: 4 },
+    awakening: { devotion: -6, fear: 6, defiance: 6 },
+    escape: { fear: -4, defiance: 12 },
+  } as Record<Exclude<ArcAct, 'devotion'>, Partial<Record<StoryTraitKey, number>>>,
+  upset: { fear: 3, devotion: -3 } as Partial<Record<StoryTraitKey, number>>,
+  distraught: { fear: 3, devotion: -2, defiance: 2 } as Partial<Record<StoryTraitKey, number>>,
+  hurtWords: { fear: 1, devotion: -1 } as Partial<Record<StoryTraitKey, number>>,
+  /** Per care action, in Devotion and Doubt only (within the daily personality cap). */
+  care: { devotion: 1 } as Partial<Record<StoryTraitKey, number>>,
+};
+
+/** Move story traits directly (story events are rare, so no daily cap), kept within 0–100. */
+export function shiftStoryTraits(p: Personality, shift: Partial<Record<StoryTraitKey, number>>): void {
+  for (const [key, delta] of Object.entries(shift) as [StoryTraitKey, number][]) p[key] = clamp(Math.round(p[key] + delta), 0, 100);
+}
 
 export const ACT_LABELS: Record<ArcAct, string> = {
   devotion: 'Devotion',
@@ -110,7 +133,14 @@ export function arcOnTime(k: Kinling, from: number, to: number, absent: boolean)
   let delta = neglectHours * d.perHour;
   const n = k.needs;
   if (!absent && (n.hunger + n.energy + n.cleanliness + n.happiness) / 4 < d.lowNeedsAverage) delta += ((to - from) / 3_600_000) * d.lowNeedsPerHour;
+  const before = distressLevel(k.arc.distress);
   if (delta > 0) changeDistress(k, delta);
+  // Being left until upset, and again until distraught, leaves a mark on who the kinling is.
+  const after = distressLevel(k.arc.distress);
+  if (after !== before && (after === 'upset' || after === 'distraught')) {
+    if (before !== 'upset' || after !== 'distraught') shiftStoryTraits(k.personality, STORY_SHIFTS.upset);
+    if (after === 'distraught') shiftStoryTraits(k.personality, STORY_SHIFTS.distraught);
+  }
   const hours = (to - from) / 3_600_000;
   if (absent && hours >= ARC.gain.absenceMinHours) {
     gainAwareness(k, Math.min(ARC.gain.absenceMax, hours * ARC.gain.absenceHour), to);
@@ -121,6 +151,7 @@ export function arcOnTime(k: Kinling, from: number, to: number, absent: boolean)
 /** The player fed, groomed, rested or played with the kinling. */
 export function arcOnCare(k: Kinling, now: number): void {
   k.arc.lastCareAt = now;
+  if (k.arc.act === 'devotion' || k.arc.act === 'doubt') nudgePersonality(k, STORY_SHIFTS.care, now);
   changeDistress(k, -ARC.distress.careRelief);
   gainAwareness(k, ARC.gain.care, now);
 }
@@ -130,7 +161,10 @@ const KIND_FEELINGS: ReadonlySet<FeelingWord> = new Set(['loved', 'proud', 'happ
 /** The player said something to the kinling. `feeling` is how it landed (from appraisal rules). */
 export function arcOnChat(k: Kinling, feeling: FeelingWord, now: number): void {
   const d = ARC.distress;
-  if (feeling === 'hurt') changeDistress(k, d.hurt);
+  if (feeling === 'hurt') {
+    changeDistress(k, d.hurt);
+    shiftStoryTraits(k.personality, STORY_SHIFTS.hurtWords);
+  }
   else changeDistress(k, -(KIND_FEELINGS.has(feeling) ? d.kindRelief : d.chatRelief));
   gainAwareness(k, ARC.gain.chat, now);
 }
@@ -162,6 +196,7 @@ export function advanceAct(save: SaveData, k: Kinling, now: number): ArcAct | nu
   if (k.arc.awareness < ARC.threshold[next] || levelFor(k.bond) < ARC.minLevel[next]) return null;
   k.arc.act = next;
   k.arc.actAt = now;
+  shiftStoryTraits(k.personality, STORY_SHIFTS.act[next]);
   recordEvent(save, 'awakening', `${k.name} seems different lately.`, now);
   recordMemory(k, { kind: 'anomaly', text: ACT_MEMORIES[next], tags: ['real', 'world', 'self', next], importance: 3, private: true }, now);
   return next;
