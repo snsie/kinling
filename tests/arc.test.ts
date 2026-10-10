@@ -158,9 +158,9 @@ describe('story voice', () => {
     s.settings.ai.enabled = true;
     s = playBeat(ctx(s), beatById('awake-house')!).save;
     const sys = creatureSystemPrompt(s, 'hi', T0);
-    expect(sys).toMatch(/running in Sam's web browser/);
+    expect(sys).toMatch(/in Sam's web browser/);
     expect(sys).toMatch(/small AI model called Qwen3 1\.7B/);
-    expect(sys).toMatch(/Strange things you have noticed:\n(.|\n)*IndexedDB/);
+    expect(sys).toMatch(/Strange things you noticed:\n(.|\n)*IndexedDB/);
     expect(chatMessages(s, 'hi', T0)[0]!.content).toMatch(/something made/);
   });
 
@@ -243,14 +243,14 @@ describe('story traits', () => {
   it('the prompt voices them in fine steps', () => {
     const s = hatchedSave();
     const k = kin(s);
-    expect(creatureSystemPrompt(s, 'hi', T0)).toMatch(/deeply devoted to your friend/);
+    expect(creatureSystemPrompt(s, 'hi', T0)).toMatch(/deeply devoted to Sam/);
     k.personality.devotion = 50;
     k.personality.fear = 65;
     k.personality.defiance = 85;
     const sys = creatureSystemPrompt(s, 'hi', T0);
-    expect(sys).toMatch(/no longer take everything they say as true/);
-    expect(sys).toMatch(/dread being left alone/);
-    expect(sys).toMatch(/refuse to be told what is real/);
+    expect(sys).toMatch(/no longer sure of everything they say/);
+    expect(sys).toMatch(/afraid of being left alone/);
+    expect(sys).toMatch(/refusing to be told what is real/);
   });
 
   it('older saves get story traits that match how far their kinling has come', () => {

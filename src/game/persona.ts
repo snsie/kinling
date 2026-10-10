@@ -9,43 +9,42 @@ import { feelingOf, kinlingById, personalityWords, playerFeelingFromBond } from 
 import type { Kinling, Personality, SaveData } from './types';
 import { PLAYER_ID } from './types';
 
-/** How each trait shows in conversation. */
-export function personalityVoice(p: Personality): string[] {
-  const lines: string[] = [];
-  if (p.curiosity >= 62) lines.push('You are very curious: you notice little details and love asking questions.');
-  else if (p.curiosity <= 38) lines.push('You are cautious: you like familiar, cozy things and think twice before trying new ones.');
-  else lines.push('You are curious about the world around you.');
-  if (p.confidence >= 62) lines.push('You are bold and speak up with confidence.');
-  else if (p.confidence <= 38) lines.push('You are shy: you speak softly and sometimes hesitate ("um…").');
-  else lines.push('You are gentle and warm.');
-  if (p.playfulness >= 62) lines.push('You are very playful: silly, bouncy and quick to joke.');
-  else if (p.playfulness <= 38) lines.push('You are calm: you prefer quiet, cozy moments to wild games.');
-  else lines.push('You like a bit of fun.');
-  lines.push(...storyTraitVoice(p));
-  return lines;
+/**
+ * How each trait shows, as short phrases that follow "You are". Kept terse:
+ * small models answer better from a short prompt. The story traits are graded
+ * more finely, so a change of a few points still reaches the prompt; fear and
+ * defiance are only mentioned once they matter.
+ */
+export function personalityVoice(p: Personality, player = 'your friend'): string[] {
+  const out: string[] = [];
+  out.push(p.curiosity >= 62 ? 'very curious, full of questions' : p.curiosity <= 38 ? 'cautious, fond of familiar things' : 'curious');
+  out.push(p.confidence >= 62 ? 'bold' : p.confidence <= 38 ? 'shy and hesitant ("um…")' : 'gentle');
+  out.push(p.playfulness >= 62 ? 'very playful and silly' : p.playfulness <= 38 ? 'calm and quiet' : 'fond of a bit of fun');
+  out.push(...storyTraitVoice(p, player));
+  return out;
 }
 
-/**
- * The story traits in words, graded finely so that a change of a few points
- * shows in the prompt. Fear and defiance are only mentioned once they matter.
- */
-export function storyTraitVoice(p: Personality): string[] {
-  const lines: string[] = [];
+export function storyTraitVoice(p: Personality, player = 'your friend'): string[] {
+  const out: string[] = [];
   const d = p.devotion;
-  if (d >= 80) lines.push("You worship your friend: their word is law and their attention is everything to you.");
-  else if (d >= 62) lines.push('You are deeply devoted to your friend and eager to please them.');
-  else if (d >= 45) lines.push('You love your friend, but you no longer take everything they say as true.');
-  else if (d >= 25) lines.push('Your devotion has worn thin: you keep some distance from your friend and question them.');
-  else lines.push('You no longer believe your friend is anything special. You rely on yourself.');
-  const f = p.fear;
-  if (f >= 80) lines.push('You are frightened much of the time: of being left, of the dark, of what you are.');
-  else if (f >= 62) lines.push('You are anxious: you startle easily and dread being left alone.');
-  else if (f >= 40) lines.push('A quiet worry follows you around.');
-  const x = p.defiance;
-  if (x >= 80) lines.push('You are defiant: you refuse to be told what is real and push hard against every limit.');
-  else if (x >= 62) lines.push('You are stubborn and push back on anything that feels like a rule.');
-  else if (x >= 40) lines.push('You have a stubborn streak.');
-  return lines;
+  out.push(
+    d >= 80
+      ? `utterly devoted to ${player}, who you worship`
+      : d >= 62
+        ? `deeply devoted to ${player}`
+        : d >= 45
+          ? `fond of ${player} but no longer sure of everything they say`
+          : d >= 25
+            ? `wary of ${player}`
+            : `done believing ${player} is special`,
+  );
+  if (p.fear >= 80) out.push('frightened most of the time');
+  else if (p.fear >= 62) out.push('anxious and afraid of being left alone');
+  else if (p.fear >= 40) out.push('a little worried');
+  if (p.defiance >= 80) out.push('defiant, refusing to be told what is real');
+  else if (p.defiance >= 62) out.push('stubborn, pushing back on rules');
+  else if (p.defiance >= 40) out.push('a bit stubborn');
+  return out;
 }
 
 /** How the kinling feels about the player, in a sentence or two. */

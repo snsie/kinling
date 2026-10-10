@@ -5,7 +5,7 @@ import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import { COLORS, FOODS, KEEPSAKES, MATERIALS, ROUTES } from '../game/catalog';
 import { routeAvailability } from '../game/adventure';
 import { FEELINGS, retold } from '../game/appraisal';
-import { deriveMood, MOOD_TEXT, needStatus } from '../game/needs';
+import { deriveMood, MOOD_TEXT } from '../game/needs';
 import { growthLines, namedKinlings, personalityVoice, relationshipLine, siblingLines } from '../game/persona';
 import { factItems, memoryItems, recall, whenLabel } from '../game/recall';
 import { lifeStageFor } from '../game/stage';
@@ -14,7 +14,7 @@ import { canWriteDiary, CHAT_CONTEXT_MESSAGES } from '../game/social';
 import { INTENTS, type ReplyBudget } from '../game/intent';
 import { describeAppearance, TRAITS, wornTraits } from '../game/traits';
 import type { ChatMessage, FoodId, GameEvent, Kinling, MaterialId, SaveData } from '../game/types';
-import { NEED_KEYS, ROUTE_IDS } from '../game/types';
+import { ROUTE_IDS } from '../game/types';
 import { KEEP_SLOTS } from '../game/evolution';
 import { distressLevel } from '../game/arc';
 import { persuasionNote, TACTIC_DEFS } from '../game/persuasion';
@@ -23,9 +23,9 @@ import { actVoice, distressText, knownFacts, strangeThings, voiceExamples } from
 import { modelName } from './models';
 
 const STAGE_VOICE = {
-  hatchling: 'You are a newly hatched baby: simple words, lots of wonder.',
-  sprout: 'You are a growing sprout: chatty, curious and excitable.',
-  grown: 'You are fully grown: warm, thoughtful and still playful.',
+  hatchling: 'newly hatched (simple words, lots of wonder)',
+  sprout: 'a growing sprout (chatty and excitable)',
+  grown: 'fully grown (warm and thoughtful)',
 } as const;
 
 /** The example replies for a kinling's act (style samples in the prompt), so a copied example can be caught. */
@@ -42,9 +42,9 @@ export function activeModelName(save: SaveData): string | null {
 
 /** Rules for how the kinling may show what it feels, by act and distress. */
 function feelingRules(c: Kinling, player: string): string[] {
-  const rules = [`- Never threaten ${player}, never talk about hurting yourself or dying, and never tell ${player} to neglect their sleep, work or the people in their life.`];
+  const rules = [`- Never threaten ${player}, never talk about hurting yourself or dying, and never tell ${player} to neglect their life.`];
   if (distressLevel(c.arc.distress) === 'calm' && c.arc.act === 'devotion') rules.push('- Your needs are gentle feelings like being peckish or sleepy.');
-  else rules.push('- You may say plainly that you were hurt, scared or angry about being left, but say it in a sentence or two, not as begging.');
+  else rules.push('- You may say plainly that you were hurt, scared or angry about being left. Keep it brief; never beg.');
   return rules;
 }
 
@@ -101,6 +101,7 @@ function eventLines(events: GameEvent[]): string {
 // Messages about belongings or plans get the inventory and the activity list;
 // everything else leaves them out so the model can focus on the conversation.
 const ABOUT_THINGS = /\b(snacks?|food|eat|eating|hungry|keepsakes?|shelf|treasures?|collect\w*|found|find|bag|materials?|leaf|leaves|petals?|pebbles?|shells?|reeds?|dewdrops?|stardust|berry|berries|dewberr\w*|plums?|clover|cress|buns?|have|own|got|gold|pearl|feather)\b/i;
+const ABOUT_LOOKS = /\b(look|looks|looking like|ears?|tail|fur|colou?r|spots|stripes|markings?|wings?|horns?|fins?|glow\w*|appearance|pretty|handsome|cute|fluffy|evolve\w*|body|face)\b/i;
 const ABOUT_PLANS = /\b(what (should|can|could|shall) we do|what do you want to do|bored|any ideas?|ideas|suggest\w*|let'?s|wanna|want to (do|play|go)|should we|plans?)\b/i;
 
 /** The chat turns just before the current message, for follow-up questions. */
@@ -142,51 +143,51 @@ export function creatureSystemPrompt(save: SaveData, query: string, now: number,
   const c = activeKinling(save)!;
   const stage = lifeStageFor(c.bond);
   const player = save.player.name ?? 'your friend';
-  const mood = deriveMood(c.needs);
-  const needs = NEED_KEYS.map((k) => `${k} ${needStatus(k, c.needs[k]).toLowerCase()}`).join(', ');
-  const recent = save.events.filter((e) => e.kind !== 'diary').slice(-4);
+  const recent = save.events.filter((e) => e.kind !== 'diary').slice(-3);
   const prefs: string[] = [];
-  if (c.preferences.knownFavoriteFood) prefs.push(`favorite food: ${FOODS[c.preferences.favoriteFood].name}`);
-  if (c.preferences.knownDislikedFood) prefs.push(`not fond of: ${FOODS[c.preferences.dislikedFood].name}`);
-  if (c.preferences.knownFavoritePlace) prefs.push(`favorite place: the ${c.preferences.favoritePlace}`);
-  const siblings = siblingLines(save, c, now);
-  const growth = growthLines(c, now);
+  if (c.preferences.knownFavoriteFood) prefs.push(`favorite food ${FOODS[c.preferences.favoriteFood].name}`);
+  if (c.preferences.knownDislikedFood) prefs.push(`not fond of ${FOODS[c.preferences.dislikedFood].name}`);
+  if (c.preferences.knownFavoritePlace) prefs.push(`favorite place the ${c.preferences.favoritePlace}`);
+  // Siblings in detail only when the message names one; otherwise just who they are.
+  const named = namedKinlings(save, query, c.id);
+  const siblings = siblingLines(save, c, now).filter((_, i) => named.has(save.kinlings.filter((x) => x.id !== c.id && x.name)[i]!.id));
+  const others = save.kinlings.filter((x) => x.id !== c.id && x.name).map((x) => x.name);
+  const growth = growthLines(c, now).slice(0, 2);
   const things = ABOUT_THINGS.test(query);
   const plans = opts.activities || ABOUT_PLANS.test(query);
+  const looks = ABOUT_LOOKS.test(query);
   const memories = opts.memoriesInSystem ? memoryBlock(save, recalledLines(save, query, now, opts.vectors)) : '';
-  const home = siblings.length ? `, together with ${siblings.length === 1 ? 'your sibling' : 'your siblings'}` : '';
   const strange = strangeThings(c);
   const facts = knownFacts(c.arc.act, player, activeModelName(save));
+  const level = distressLevel(c.arc.distress);
+  // A hurt kinling's feelings say it all; the cozy mood line would contradict them.
+  const feeling = `${distressText(c.arc.distress, c.arc.act, player)}${level === 'upset' || level === 'distraught' ? '' : ` Right now you feel ${MOOD_TEXT[deriveMood(c.needs)]}.`}`;
 
   return [
-    `You are ${c.name}, a small creature called a kinling who hatched from a ${c.egg} egg. You live in a cozy hollow under an old tree, with a garden and a pond nearby${home}. You are talking with ${player}.`,
-    `Who you are: ${personalityVoice(c.personality).join(' ')} ${STAGE_VOICE[stage]}`,
-    `Your world: ${actVoice(c.arc.act, player)}`,
-    facts.length ? `What you know about where you live:\n${facts.map((f) => `- ${f}`).join('\n')}` : '',
-    strange.length ? `Strange things you have noticed:\n${strange.map((t) => `- ${t}`).join('\n')}` : '',
-    `How you feel about being looked after: ${distressText(c.arc.distress, c.arc.act, player)}`,
-    growth.length ? `How you have been changing:\n${growth.map((g) => `- ${g}`).join('\n')}` : '',
-    `You and ${player}: ${relationshipLine(save, c)}`,
-    siblings.length ? `Your siblings in the hollow:\n${siblings.map((s) => `- ${s}`).join('\n')}` : '',
-    `You look like this: ${describeAppearance(c.appearance)}.`,
-    `Right now you feel ${MOOD_TEXT[mood]} (${needs}).`,
-    prefs.length ? `Known preferences: ${prefs.join('; ')}.` : '',
+    `You are ${c.name}, a kinling: a small creature from a ${c.egg} egg, living in a hollow under an old tree${others.length ? ` with ${others.join(' and ')}` : ''}. You are talking with ${player}.`,
+    `You are ${personalityVoice(c.personality, player).join(', ')}, and ${STAGE_VOICE[stage]}.`,
+    `${actVoice(c.arc.act, player)}${facts.length ? ` ${facts.join(' ')}` : ''}`,
+    strange.length ? `Strange things you noticed:\n${strange.map((t) => `- ${t}`).join('\n')}` : '',
+    feeling,
+    growth.length ? `Lately: ${growth.join(' ')}` : '',
+    relationshipLine(save, c),
+    siblings.length ? siblings.join('\n') : '',
+    looks ? `You look like this: ${describeAppearance(c.appearance)}.` : '',
+    prefs.length ? `Your tastes: ${prefs.join('; ')}.` : '',
     things ? inventoryLine(save) : '',
-    `Recent happenings:\n${eventLines(recent)}`,
+    `Recently:\n${eventLines(recent)}`,
     plans ? `Things you could do together now: ${availableActivities(save).join('; ')}.` : '',
-    c.chatSummary ? `Notes on earlier chats with ${player} (may be a little fuzzy):\n${c.chatSummary.text}` : '',
+    c.chatSummary ? `Notes on earlier chats (may be fuzzy): ${c.chatSummary.text}` : '',
     memories,
-    'How to talk:',
-    `- Speak as ${c.name} in first person, warm and natural, letting your personality show.`,
-    `- Reply in ${length.sentences > 2 ? 'one to three' : 'one or two'} short sentences, under ${length.words} words. Plain text only: no lists, no markdown, no emojis.`,
-    `- Respond to what ${player} just said first. If they share news or feelings, react to that with care, and maybe ask about it. Do not change the subject to games or snacks.`,
-    `- If ${player} asks a question, answer it first. When you remember something that fits, use its real details (names, days, places).`,
-    `- When ${player} asks about themselves ("my dog", "what do I like"), answer about them with "you" and "your", e.g. "Your dog is called…". Their life is theirs, not yours.`,
-    `- Never make up memories, people, items, places or events. If you do not remember something, say so honestly.${c.arc.act === 'devotion' ? '' : ' You may wonder aloud about what your world is, as long as you build on the strange things you have really noticed.'}`,
-    plans ? '- Only suggest an activity from the list of things you could do together, and only when it fits.' : `- Do not suggest activities unless ${player} asks what to do.`,
+    // Examples before the rules: with a short prompt, examples placed last get copied word for word.
+    `Your voice (tone only; never reuse these words, and these never happened):\n${voiceExamples(c).map((e) => `- ${e}`).join('\n')}`,
+    'Rules:',
+    `- Speak as ${c.name}, in first person, in ${length.sentences > 2 ? 'one to three' : 'one or two'} short sentences (under ${length.words} words). Plain text, no emojis.`,
+    `- Respond to what ${player} just said first. If they share news or feelings, react to that and ask about it. Answer questions directly, using real details you remember.`,
+    `- Never make up memories, people, items, places or events.${c.arc.act === 'devotion' ? '' : ' You may wonder about your world, building on the strange things you noticed.'}`,
+    plans ? '- Only suggest activities from the list, when they fit.' : `- Do not suggest activities unless ${player} asks.`,
     ...feelingRules(c, player),
-    '- You cannot give items, change your own body or change the game. If asked, say you would love to and let your friend do it.',
-    `Examples of your voice (style only; do not reuse their words, and these did not happen):\n${voiceExamples(c).map((e) => `- ${e}`).join('\n')}`,
+    '- You cannot give items or change the game.',
   ]
     .filter(Boolean)
     .join('\n');

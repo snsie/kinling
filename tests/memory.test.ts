@@ -305,9 +305,15 @@ describe('chat prompt', () => {
     s = chatted(["you were so brave, I'm proud of you", 'I believe in you'], s);
     s = reflect(s, kin(s).id, T0 + HOUR).save;
     const chatty = creatureSystemPrompt(s, 'how are you feeling?', T0 + 2 * HOUR);
-    expect(chatty).toContain('Your siblings in the hollow:\n- Pip');
-    expect(chatty).toContain('How you have been changing:\n- Lately');
-    expect(chatty).toMatch(/You and Sam: /);
+    // Siblings are named; their details come in only when the message is about one.
+    expect(chatty).toMatch(/living in a hollow under an old tree with Pip\./);
+    expect(chatty).not.toMatch(/^Pip \(hatched from/m);
+    expect(creatureSystemPrompt(s, 'how is Pip doing?', T0 + 2 * HOUR)).toMatch(/^Pip \(hatched from/m);
+    expect(chatty).toContain("Lately: Lately I've been feeling braver");
+    expect(chatty).toMatch(/getting to know Sam|You like Sam|close to Sam|You adore Sam/);
+    // Appearance only when the message is about looks.
+    expect(chatty).not.toContain('You look like this');
+    expect(creatureSystemPrompt(s, 'I love your ears', T0)).toContain('You look like this');
     expect(chatty).not.toContain('Snacks: seed buns');
     expect(chatty).not.toContain('Things you could do together now');
     expect(creatureSystemPrompt(s, 'what keepsakes do you have?', T0)).toContain('Snacks: seed buns');
