@@ -8,7 +8,8 @@
 // daily counters at the top level of the save.
 // v4 memories had no feeling or personality influence, and kinlings did not
 // turn chat into memories or reflect on them.
-import { playerFeelingFromBond } from '../game/state';
+// v5 kinlings had no story arc, and there was no story-effects setting.
+import { newArc, playerFeelingFromBond } from '../game/state';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
 import type { SaveData } from '../game/types';
 import { validateSave } from './schema';
@@ -90,6 +91,13 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
       };
     });
     return { ...v4, kinlings, schemaVersion: 5 };
+  },
+  5: (v5) => {
+    const at = typeof v5.lastTickAt === 'number' ? v5.lastTickAt : typeof v5.updatedAt === 'number' ? v5.updatedAt : 0;
+    // Existing kinlings start the story at the beginning, as if just cared for.
+    const kinlings = (Array.isArray(v5.kinlings) ? v5.kinlings : []).map((raw) => ({ ...(raw as AnyRecord), arc: { ...newArc(at), awarenessDay: '' } }));
+    const settings = (v5.settings ?? {}) as AnyRecord;
+    return { ...v5, kinlings, settings: { ...settings, story: { effects: true } }, schemaVersion: 6 };
   },
 };
 

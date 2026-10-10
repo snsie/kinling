@@ -243,3 +243,44 @@
 .memory-search {
   margin-top: 12px;
 }
+
+/* Story effects (src/app/story.ts sets the data attributes on <html>).
+   A rare flicker once the kinling is aware, glitches once it tries to get
+   out, a seam at the room's edge, and a drained room when it's distraught.
+   Reduced motion keeps only the static colour changes. */
+html[data-act='awakening'] .room__svg {
+  animation: story-flicker 11s steps(1) infinite;
+}
+html[data-act='escape'] .room__svg {
+  animation: story-glitch 6s steps(1) infinite;
+}
+@keyframes story-flicker {
+  0%, 95%, 100% { filter: none; transform: none; }
+  96% { filter: hue-rotate(25deg) saturate(1.4); transform: translateX(1px); }
+  97% { filter: contrast(1.3); transform: translateX(-2px); }
+}
+@keyframes story-glitch {
+  0%, 89%, 100% { filter: none; clip-path: none; transform: none; }
+  90% { clip-path: inset(12% 0 58% 0); transform: translateX(-5px); }
+  91% { filter: invert(0.08) hue-rotate(-30deg); transform: translateX(3px); }
+  93% { clip-path: inset(52% 0 22% 0); transform: translateX(2px); }
+  94% { filter: none; clip-path: none; transform: none; }
+  97% { filter: brightness(1.15); }
+}
+html[data-edges='true'] .room {
+  animation: story-edge 8s ease-in-out infinite;
+}
+@keyframes story-edge {
+  0%, 78%, 100% { box-shadow: inset -2px 0 0 transparent; }
+  85% { box-shadow: inset -10px 0 16px -6px rgba(40, 18, 8, 0.55); }
+  88% { box-shadow: inset -4px 0 8px -4px rgba(40, 18, 8, 0.3); }
+}
+html[data-distress='distraught'] .room__svg {
+  filter: saturate(0.6) brightness(0.93);
+}
+html.reduce-motion[data-act='escape'] .room__svg {
+  filter: saturate(0.8) contrast(1.05);
+}
+html.reduce-motion[data-edges='true'] .room {
+  box-shadow: inset -6px 0 12px -6px rgba(40, 18, 8, 0.4);
+}

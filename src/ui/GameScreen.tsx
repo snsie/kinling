@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { aiGreeting, finishAdventure, greetOnArrival } from '../app/actions';
 import { useAiStatus } from '../app/aiControl';
 import { store } from '../app/store';
+import { storyTick } from '../app/story';
 import { ui, useUi, type TabId } from '../app/ui';
 import { isFirstVisit, routeAvailability } from '../game/adventure';
 import type { RewardSummary } from '../game/outcome';
@@ -61,6 +62,7 @@ export function GameScreen({ save, reducedMotion }: { save: SaveData; reducedMot
     const tick = () => {
       const fb = store.tick();
       if (fb) greetOnArrival();
+      else storyTick();
     };
     const id = setInterval(tick, 10_000);
     const onVis = () => {
@@ -147,7 +149,7 @@ export function GameScreen({ save, reducedMotion }: { save: SaveData; reducedMot
     <main className="layout" id="main">
       <section className="layout__home" aria-label="Home">
         <RoomView save={save} reducedMotion={reducedMotion} />
-        <NeedsPanel needs={c.needs} />
+        <NeedsPanel needs={c.needs} distress={c.arc.distress} />
         <CareBar save={save} />
       </section>
       <section className="layout__panel card" ref={panelRef}>

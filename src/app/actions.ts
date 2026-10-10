@@ -5,6 +5,7 @@ import { ai } from '../ai/engine';
 import { appraiseMessage, chatReply, greet, reactTo, routeMessage, suggestFact, summarizeChat, translateAppearance, translateCare, warmRecall, writeDiary } from '../ai/companion';
 import { resolveAdventure, type AdventureOutcome } from '../game/adventure';
 import { applyAppraisal, growthPhrase, pendingAppraisals, reflect, shouldReflect } from '../game/appraisal';
+import { arcChat } from '../game/arc';
 import { performCare } from '../game/care';
 import { checkAction, type ProposedAction } from '../game/careProposals';
 import { greetingLine, stageUpLine } from '../game/dialogue';
@@ -18,6 +19,7 @@ import { cancelSiblingHatch, startSiblingHatch } from '../game/eggs';
 import { activeKinling, draft, kinlingById, selectKinling } from '../game/state';
 import { playSfx } from './sfx';
 import { store, type StoreSnapshot } from './store';
+import { storyBeat } from './story';
 import { ui } from './ui';
 
 export function useStore(): StoreSnapshot {
@@ -91,7 +93,8 @@ export function doCare(action: CareAction, food?: FoodId): boolean {
   const out = performCare(save, k.id, action, now(), { food });
   if (out.feedback.ok) store.update(() => out.save);
   presentFeedback(out.feedback);
-  if (out.feedback.ok) maybeReact(out.feedback.aiEvent);
+  // A story beat, when one fits, follows the care line instead of a model reaction.
+  if (out.feedback.ok && !storyBeat('care', { care: action }, 2600)) maybeReact(out.feedback.aiEvent);
   return out.feedback.ok;
 }
 
@@ -152,7 +155,9 @@ export function runProposedAction(action: ProposedAction): { ok: boolean; explor
 export function greetOnArrival(): void {
   const save = store.save;
   if (!save || !activeKinling(save)) return;
+  const away = store.consumeArrivalGap();
   const fb = store.consumeLastTick();
+  if (storyBeat('arrive', { awayMs: away })) return;
   if (fb?.line) presentFeedback(fb);
   else ui.say(greetingLine(save), 'authored');
 }
@@ -185,12 +190,13 @@ export async function sendChat(text: string): Promise<void> {
     ui.setChatStreaming(null);
     chatInFlight = false;
   }
+  storyBeat('chat', { playerText: clean }, 1800);
   void afterChat(clean, reply.offerFact ? reply.messageId : null);
 }
 
 /** Store the player's message to a kinling and answer it. Returns the reply's message id. */
 async function respond(kinlingId: string, clean: string): Promise<{ messageId: string | null; offerFact: boolean }> {
-  store.update((s) => addChatMessage(s, kinlingId, 'player', clean, 'player', now()));
+  store.update((s) => arcChat(addChatMessage(s, kinlingId, 'player', clean, 'player', now()), kinlingId, clean, now()));
   const save = store.save!;
 
   // Explicit "remember that..." facts are stored in the player's own words.

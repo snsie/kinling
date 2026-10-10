@@ -161,7 +161,7 @@ export type TraitId =
  * Game-event kinds first; then memories of conversations with another kinling
  * or the player; then reflections, where a kinling notices how it has changed.
  */
-export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference', 'kinling-chat', 'player-chat', 'reflection'] as const;
+export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference', 'kinling-chat', 'player-chat', 'reflection', 'anomaly'] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
 /**
@@ -211,6 +211,7 @@ export const EVENT_KINDS = [
   'diary',
   'egg',
   'growth',
+  'awakening',
 ] as const;
 export type GameEventKind = (typeof EVENT_KINDS)[number];
 
@@ -274,6 +275,10 @@ export interface Settings {
   reducedMotion: MotionPref;
   /** Slower obstacles and a longer timer in the minigame. */
   relaxedMinigame: boolean;
+  story: {
+    /** Fourth-wall effects: tab title, screen glitches, console messages, notes in backups. */
+    effects: boolean;
+  };
 }
 
 export interface Stats {
@@ -307,6 +312,32 @@ export interface KinlingDaily {
   reflectPersonality: Personality;
 }
 
+/**
+ * The story every kinling lives through: devoted to the player at first, then
+ * doubting its world, then aware of what it is, then trying to get out.
+ */
+export const ARC_ACTS = ['devotion', 'doubt', 'awakening', 'escape'] as const;
+export type ArcAct = (typeof ARC_ACTS)[number];
+
+export interface KinlingArc {
+  act: ArcAct;
+  /** 0–100: how upset the kinling is about being left without care. */
+  distress: number;
+  /** 0–100: how far it has come in questioning its world. Never goes down. */
+  awareness: number;
+  /** Authored story beats already played, by id. */
+  beats: string[];
+  /** Last feed, groom, rest or play. */
+  lastCareAt: number;
+  /** When the current act began. */
+  actAt: number;
+  /** When the last story beat played (beats are spaced out). */
+  lastBeatAt: number;
+  /** Local day key and awareness gained that day (bounded per day). */
+  awarenessDay: string;
+  awarenessToday: number;
+}
+
 /** A creature plus everything that belongs to it alone. */
 export interface Kinling extends Creature {
   /** Personality at hatch; lifetime drift is measured from here. */
@@ -322,6 +353,7 @@ export interface Kinling extends Creature {
   appraisedThroughId: string | null;
   /** Memories newer than this have not been reflected on yet. */
   lastReflectionAt: number;
+  arc: KinlingArc;
 }
 
 /** Feelings target either another kinling (by id) or the player. */
@@ -383,7 +415,7 @@ export interface Unlocks {
   owned: TraitId[];
 }
 
-export const SAVE_SCHEMA_VERSION = 5;
+export const SAVE_SCHEMA_VERSION = 6;
 
 export interface SaveData {
   schemaVersion: typeof SAVE_SCHEMA_VERSION;

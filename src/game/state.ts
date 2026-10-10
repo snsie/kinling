@@ -10,6 +10,7 @@ import type {
   GameEventKind,
   Inventory,
   Kinling,
+  KinlingArc,
   KinlingDaily,
   MaterialCost,
   MaterialId,
@@ -45,6 +46,7 @@ export const LIMITS = {
   summaryLength: 600,
   diaryLength: 600,
   nameLength: 16,
+  beats: 64,
 } as const;
 
 /** Most a personality trait can move in one day, in either direction. */
@@ -57,6 +59,7 @@ export function defaultSettings(): Settings {
     volume: 0.5,
     reducedMotion: 'system',
     relaxedMinigame: false,
+    story: { effects: true },
   };
 }
 
@@ -220,7 +223,13 @@ export function hatchKinling(save: SaveData, egg: EggType, appearance: Appearanc
     socialDaily: freshDaily(now),
     appraisedThroughId: null,
     lastReflectionAt: now,
+    arc: newArc(now),
   };
+}
+
+/** A kinling at the very start of its story. */
+export function newArc(now: number): KinlingArc {
+  return { act: 'devotion', distress: 0, awareness: 0, beats: [], lastCareAt: now, actAt: now, lastBeatAt: 0, awarenessDay: dayKey(now), awarenessToday: 0 };
 }
 
 export function ensureDaily(k: Kinling, now: number): void {

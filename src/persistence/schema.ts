@@ -5,6 +5,7 @@ import { isTraitId, wornTraits } from '../game/traits';
 import { LIMITS } from '../game/state';
 import type { SaveData } from '../game/types';
 import {
+  ARC_ACTS,
   CARE_ACTIONS,
   CHAT_ROLES,
   COLOR_IDS,
@@ -116,6 +117,17 @@ const KinlingSchema = CreatureSchema.extend({
   }),
   appraisedThroughId: id.nullable(),
   lastReflectionAt: time,
+  arc: z.object({
+    act: z.enum(ARC_ACTS),
+    distress: percent,
+    awareness: percent,
+    beats: z.array(z.string().max(40)).max(LIMITS.beats),
+    lastCareAt: time,
+    actAt: time,
+    lastBeatAt: time,
+    awarenessDay: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/),
+    awarenessToday: z.number().finite().min(0).max(100),
+  }),
 });
 
 const feelingValue = z.number().finite().min(-30).max(100);
@@ -144,6 +156,7 @@ const SettingsSchema = z.object({
   volume: unit,
   reducedMotion: z.enum(MOTION_PREFS),
   relaxedMinigame: z.boolean(),
+  story: z.object({ effects: z.boolean() }),
 });
 
 export const SaveSchema = z.object({

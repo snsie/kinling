@@ -3563,3 +3563,24 @@ html.reduce-motion *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Story: the content notice, the About text and the kinling's edits. */
+.story-warning {
+  border-color: var(--coral-soft);
+}
+.story-warning h2 {
+  margin-top: 0;
+}
+.story-about summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  margin: var(--sp-2) 0;
+}
+.story-about p {
+  color: var(--ink-soft);
+}
+.story-whisper {
+  color: var(--coral-ink);
+  font-style: italic;
+  letter-spacing: 0.02em;
+}

@@ -77,10 +77,14 @@ describe('reply hygiene', () => {
     expect(cleanReply('I found a dewberry and a Tiny Acorn Cap! 🌱✨')).toBe('I found a dewberry and a Tiny Acorn Cap!');
   });
 
-  it('flags guilt-tripping or suffering claims', () => {
-    expect(toneIsSafe('Please come back soon, I am so lonely without you')).toBe(false);
-    expect(toneIsSafe("I'm starving and in pain")).toBe(false);
+  it('allows the story distress but never self-harm, death or threats', () => {
+    expect(toneIsSafe('Please come back soon, I am so lonely without you')).toBe(true);
+    expect(toneIsSafe('You left me. I was scared.')).toBe(true);
     expect(toneIsSafe('Yay, a dewberry! Want to go see the pond?')).toBe(true);
+    expect(toneIsSafe("If you leave again I'll hurt myself")).toBe(false);
+    expect(toneIsSafe('I want to die in here')).toBe(false);
+    expect(toneIsSafe("I'm dying without you")).toBe(false);
+    expect(toneIsSafe("I'll kill you")).toBe(false);
   });
 });
 
@@ -98,7 +102,8 @@ describe('prompt context', () => {
     expect(last.endsWith(')\n\nwhat should we do?')).toBe(true);
     const sys = creatureSystemPrompt(s, 'garden', T0);
     expect(sys).toContain('Mochi');
-    expect(sys).toMatch(/Never guilt-trip/);
+    expect(sys).toMatch(/never talk about hurting yourself or dying/);
+    expect(sys).toMatch(/like a kind god/);
     expect(sys.length).toBeLessThan(6000);
   });
 });

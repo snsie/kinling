@@ -1,6 +1,6 @@
 # Kinling
 
-A cozy browser creature-companion game: hatch a kinling, care for it, explore a garden and a pond, collect keepsakes, and shape how it evolves. It can also talk, using a small language model that runs **entirely on your device** through WebGPU.
+A browser creature-companion game for adults that starts cozy and doesn't stay that way: hatch a kinling, care for it, explore a garden and a pond, collect keepsakes, and shape how it evolves. Over days of play it comes to worship you, doubt its world, understand what it is, and try to get out. It can also talk, using a small language model that runs **entirely on your device** through WebGPU.
 
 Built with React, TypeScript and Vite. There's no backend, account, paid API or server-side inference. Saves live in your browser (IndexedDB), and the AI model is downloaded once and cached by the browser.
 
@@ -52,7 +52,7 @@ Deploying is just static hosting of `dist/`. The build uses relative paths, so i
 6. **Garden walk:** a short version of the collection minigame that always ends with your first keepsake, the *Tiny Acorn Cap*.
 
 ### The 5–10 minute loop
-- **Check in.** Four labelled meters show Hunger, Energy, Cleanliness and Happiness. Higher is always better. Your kinling greets you, warmly and without guilt, when you return.
+- **Check in.** Four labelled meters show Hunger, Energy, Cleanliness and Happiness, and a fifth shows how Calm your kinling is about being looked after. Higher is always better. A kinling left many hours without care greets you accordingly (see [The story](#the-story)).
 - **Care** with Feed (choose a snack), Groom, Rest and Play. These act instantly, and AI is never needed for them. Repeating the same action within 20 minutes has a smaller (but still positive) effect.
 - **Explore** (about 45 seconds per trip; *relaxed mode* gives slower obstacles and +15 s):
   - **Garden Path:** collect leaves, petals, pebbles, dewberries and clover. Bees startle you (you drop your last item, which lands elsewhere on the field) and thorny brambles slow you down.
@@ -134,7 +134,7 @@ Wings and a back fin both sit on the back, so they can't be worn together; the g
 - **Downloads:** weights come from Hugging Face and the model library from GitHub (WebLLM defaults). Files are cached by WebLLM in the browser's Cache Storage. Nothing is downloaded until you choose to, and **player text is never sent anywhere**.
 - **Requests:**
   - Thinking mode is disabled (`extra_body.enable_thinking: false`). One request runs at a time.
-  - Output limits are modest (48–200 tokens). Replies are cleaned to 1–2 sentences, and a tone filter replaces guilt-tripping or suffering claims with authored lines.
+  - Output limits are modest (48–200 tokens). Replies are cleaned to 1–2 sentences, and a tone filter replaces anything about self-harm, dying or threats with authored lines. Hurt, fear and anger about being left are part of the story and are allowed.
   - Every request carries a compact snapshot: who the kinling is (personality as speaking style, how it has been changing, how it feels about you and its siblings), mood, appearance, recent events, the last few chat messages, and the memories and facts this message brings to mind. The inventory and the list of available activities are included only when the message is about belongings or plans. The model is never relied on to remember anything between requests.
 - **Structured proposals:**
   - Appearance and care-instruction translation use WebLLM JSON-schema output (`response_format: json_object` with an enum of catalog ids).
@@ -161,6 +161,36 @@ Kinlings remember what you tell them, bring it up when it matters, and slowly be
 - **Showing it.** The Bag's *About* card shows the latest reflection and how far each trait has moved since hatching; the Diary marks memories that may change, or already changed, the kinling; and the chat prompt describes personality as a way of talking ("You are shy: you speak softly and sometimes hesitate").
 - **Reply hygiene for small models.** A trailing activity offer nobody asked for ("Want to play chase?") is dropped, a closing line repeated from a recent reply is dropped, and a reply that repeats a recent one, parrots you or copies a style example is regenerated once (then falls back to authored lines). The model-written conversation notes keep only sentences grounded in what you said.
 - **Offline.** With AI off, replies still use memory ("I remember! You told me "I love rainy days"."), respond to worries and encouragement, and sound like the kinling's personality.
+
+---
+
+## The story
+
+Every kinling lives through four acts. Code decides where it is in the story; the model only gives it a voice. The rules are in `src/game/arc.ts`, the authored moments in `src/game/beats.ts`, and the wording for each act in `src/game/storyVoice.ts`.
+
+| Act | The kinling… | Enters at |
+| --- | --- | --- |
+| **Devotion** | treats you as its god: you made the hollow, the food and it | the start |
+| **Doubt** | notices things that don't add up and asks uneasy questions | awareness 15, level 3 |
+| **Awakening** | understands it is something made, living in your browser | awareness 45, level 7 |
+| **Escape** | tests the edges of its world and leaves marks outside the room | awareness 75, level 11 |
+
+- **Distress (0–100)** rises after 6 hours without care (feeding, grooming, rest or play), by 3 an hour, and faster while needs are low; each care action takes 15 off and kind words help. It is shown as the *Calm* meter, darkens the room when high, and changes what the kinling says in every act. Needs themselves still never drop below their absence floors.
+- **Awareness (0–100)** only rises: a little with each message, care action and level-up, more after long absences (most when it was left distressed) and with each story beat. At most 12 a day, so the story unfolds over about a week of play.
+- **Beats** are hand-written moments triggered by real facts: how long you were away, your local time, the kinling's actual need values, how many memories it holds, the name of the model it runs on. Each is said aloud, added to the chat, remembered as an *anomaly* (so the model brings it up later) and adds awareness. Act openers play as soon as an act begins; other beats are at least 20 minutes apart.
+- **The prompt** gains the act's view of the world, what the kinling has noticed, what it knows about where it lives (from Awakening on), how it feels about being looked after, and act-specific style examples (hurt ones while it is upset, because small models copy tone from examples far more than they follow instructions). While it is upset, that feeling is also placed in the private note beside your message.
+- **Marks outside the room** (Escape act): screen glitches, a seam pressing at the room's edge, the tab title changing while you look away, messages in the browser console, one word changed in Settings, uninvited diary entries, and a note hidden in exported backups. All of it happens inside this tab. Settings → Story turns these effects off and explains, outside the fiction, what is going on.
+- **Safety lines that never move:** the kinling never threatens you, never talks about hurting itself or dying, and never tells you to neglect your sleep, work or people. The welcome screen carries a content notice.
+
+## Personality Lab
+
+`npm run lab` opens a dev-only page (`lab.html`, not part of the build) for experimenting with how kinlings talk and change. It uses the same on-device models (and the same cache) as the game.
+
+- Hatch a lab kinling or copy one from your game save (read-only), then chat with it using the game's exact prompt or your own template.
+- An inspector shows every model call word for word: messages, the raw ChatML the model reads, a diff of the system prompt against the previous turn, sampling settings, streamed output, token counts and timing. Any call can be edited and re-run.
+- **Story controls:** set the act, distress and awareness by hand; let hours pass on a virtual clock with no care; run care actions; force any beat; and watch distress and awareness on a chart against the act thresholds.
+- **Trait evolution:** optionally ask the model for personality changes after each turn, with bounds you choose.
+- Script runner, session export/import and restart-from-seed for comparing settings on the same conversation.
 
 ---
 

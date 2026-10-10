@@ -122,7 +122,7 @@ export function RoomView({ save, reducedMotion }: { save: SaveData; reducedMotio
                 name={k.name}
                 appearance={k.appearance}
                 stage={lifeStageFor(k.bond)}
-                mood={deriveMood(k.needs)}
+                mood={k.arc.distress >= 45 ? 'glum' : deriveMood(k.needs)}
                 anim={tokenAnim}
                 x={pos.x}
                 y={pos.y}

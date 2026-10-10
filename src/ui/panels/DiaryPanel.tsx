@@ -53,7 +53,7 @@ export function DiaryPanel({ save }: { save: SaveData }) {
           <li key={d.id} className="diary-entry" data-reveal="">
             <div className="diary-entry__meta">
               <time dateTime={new Date(d.at).toISOString()}>{formatTime(d.at)}</time>
-              <span className="pill pill--small">{d.source === 'ai' ? 'Written with on-device AI' : 'Written from today’s events'}</span>
+              <span className="pill pill--small">{d.source === 'ai' ? 'Written with on-device AI' : d.eventIds.length ? 'Written from today’s events' : 'Written on its own'}</span>
             </div>
             <p>{d.text}</p>
           </li>

@@ -39,6 +39,11 @@ export const MODELS: Record<ModelId, ModelInfo> = {
   },
 };
 
+/** A model's short name, as the kinling would hear it: "Qwen3 1.7B". */
+export function modelName(id: ModelId): string {
+  return MODELS[id].label.replace(/\s*\(.*\)\s*$/, '');
+}
+
 export function formatMB(mb: number): string {
   return mb >= 1000 ? `${(mb / 1000).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }

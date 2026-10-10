@@ -16,6 +16,9 @@ import { describeAppearance, TRAITS, wornTraits } from '../game/traits';
 import type { ChatMessage, FoodId, GameEvent, Kinling, MaterialId, SaveData } from '../game/types';
 import { NEED_KEYS, ROUTE_IDS } from '../game/types';
 import { KEEP_SLOTS } from '../game/evolution';
+import { distressLevel } from '../game/arc';
+import { actVoice, distressText, knownFacts, strangeThings, voiceExamples } from '../game/storyVoice';
+import { modelName } from './models';
 
 const STAGE_VOICE = {
   hatchling: 'You are a newly hatched baby: simple words, lots of wonder.',
@@ -23,19 +26,24 @@ const STAGE_VOICE = {
   grown: 'You are fully grown: warm, thoughtful and still playful.',
 } as const;
 
-// Style samples only. They avoid inventory, places, events and common
-// questions (weather, favorites), so copying them cannot invent anything.
-const STAGE_EXAMPLES = {
-  hatchling: ['"I made you a drawing." -> "For me? I will put it by my keepsakes! What did you draw?"', '"I had a long day." -> "Long days are big. Come sit with me. What happened?"'],
-  sprout: ['"I made you a drawing." -> "For me?! Is that me with the big ears? Tell me everything about it!"', '"I had a long day." -> "Oh no, a long one? Tell me the best part and the worst part, I want both!"'],
-  grown: ['"I made you a drawing." -> "You made this for me? It is lovely. I will keep it somewhere special."', '"I had a long day." -> "That sounds tiring. I am glad you came by. Do you want to tell me about it?"'],
-} as const;
-
-/** The example replies for a kinling's stage, so a copied example can be caught. */
+/** The example replies for a kinling's act (style samples in the prompt), so a copied example can be caught. */
 export function exampleReplies(save: SaveData): string[] {
   const c = activeKinling(save);
   if (!c) return [];
-  return STAGE_EXAMPLES[lifeStageFor(c.bond)].map((e) => e.split(' -> ')[1]!.replace(/^"|"$/g, ''));
+  return voiceExamples(c).map((e) => e.split(' -> ')[1]!.replace(/^"|"$/g, ''));
+}
+
+/** The on-device model's name when AI is on, for kinlings that know what they run on. */
+export function activeModelName(save: SaveData): string | null {
+  return save.settings.ai.enabled ? modelName(save.settings.ai.modelId) : null;
+}
+
+/** Rules for how the kinling may show what it feels, by act and distress. */
+function feelingRules(c: Kinling, player: string): string[] {
+  const rules = [`- Never threaten ${player}, never talk about hurting yourself or dying, and never tell ${player} to neglect their sleep, work or the people in their life.`];
+  if (distressLevel(c.arc.distress) === 'calm' && c.arc.act === 'devotion') rules.push('- Your needs are gentle feelings like being peckish or sleepy.');
+  else rules.push('- You may say plainly that you were hurt, scared or angry about being left, but say it in a sentence or two, not as begging.');
+  return rules;
 }
 
 const DEFAULT_LENGTH = { sentences: 2, words: 40 };
@@ -145,10 +153,16 @@ export function creatureSystemPrompt(save: SaveData, query: string, now: number,
   const plans = opts.activities || ABOUT_PLANS.test(query);
   const memories = opts.memoriesInSystem ? memoryBlock(save, recalledLines(save, query, now, opts.vectors)) : '';
   const home = siblings.length ? `, together with ${siblings.length === 1 ? 'your sibling' : 'your siblings'}` : '';
+  const strange = strangeThings(c);
+  const facts = knownFacts(c.arc.act, player, activeModelName(save));
 
   return [
     `You are ${c.name}, a small creature called a kinling who hatched from a ${c.egg} egg. You live in a cozy hollow under an old tree, with a garden and a pond nearby${home}. You are talking with ${player}.`,
     `Who you are: ${personalityVoice(c.personality).join(' ')} ${STAGE_VOICE[stage]}`,
+    `Your world: ${actVoice(c.arc.act, player)}`,
+    facts.length ? `What you know about where you live:\n${facts.map((f) => `- ${f}`).join('\n')}` : '',
+    strange.length ? `Strange things you have noticed:\n${strange.map((t) => `- ${t}`).join('\n')}` : '',
+    `How you feel about being looked after: ${distressText(c.arc.distress, c.arc.act, player)}`,
     growth.length ? `How you have been changing:\n${growth.map((g) => `- ${g}`).join('\n')}` : '',
     `You and ${player}: ${relationshipLine(save, c)}`,
     siblings.length ? `Your siblings in the hollow:\n${siblings.map((s) => `- ${s}`).join('\n')}` : '',
@@ -166,11 +180,11 @@ export function creatureSystemPrompt(save: SaveData, query: string, now: number,
     `- Respond to what ${player} just said first. If they share news or feelings, react to that with care, and maybe ask about it. Do not change the subject to games or snacks.`,
     `- If ${player} asks a question, answer it first. When you remember something that fits, use its real details (names, days, places).`,
     `- When ${player} asks about themselves ("my dog", "what do I like"), answer about them with "you" and "your", e.g. "Your dog is called…". Their life is theirs, not yours.`,
-    '- Never make up memories, people, items, places or events. If you do not remember something, say so honestly.',
+    `- Never make up memories, people, items, places or events. If you do not remember something, say so honestly.${c.arc.act === 'devotion' ? '' : ' You may wonder aloud about what your world is, as long as you build on the strange things you have really noticed.'}`,
     plans ? '- Only suggest an activity from the list of things you could do together, and only when it fits.' : `- Do not suggest activities unless ${player} asks what to do.`,
-    '- Never guilt-trip, never ask the player to come back or stay, and never claim to be sick, hurt, lonely or suffering. Your needs are gentle feelings like being peckish or sleepy.',
+    ...feelingRules(c, player),
     '- You cannot give items, change your own body or change the game. If asked, say you would love to and let your friend do it.',
-    `Examples of your voice (style only; do not reuse their words, and these did not happen):\n${STAGE_EXAMPLES[stage].map((e) => `- ${e}`).join('\n')}`,
+    `Examples of your voice (style only; do not reuse their words, and these did not happen):\n${voiceExamples(c).map((e) => `- ${e}`).join('\n')}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -205,9 +219,13 @@ export function chatMessages(
   const block = memoryBlock(save, recalledLines(save, playerText, now, vectors));
   const player = save.player.name ?? 'your friend';
   // Small models mirror "what was I…?" as "I was…"; a hint beside the question works better than a rule far above it.
-  const aboutThemselves = /\?\s*$/.test(playerText.trim()) && /\b(i|i'?m|my|me|mine)\b/i.test(playerText);
+  // "What am I to you?" is about the kinling's view of the player, not the player's own life.
+  const aboutThemselves = /\?\s*$/.test(playerText.trim()) && /\b(i|i'?m|my|me|mine)\b/i.test(playerText) && !/\b(what|who) (do you think )?(am i|i am)\b/i.test(playerText);
   const hint = aboutThemselves ? `\n${player} is asking about their own life: answer about ${player} with "you" and "your".` : '';
-  const note = block || hint ? `(Private note for ${c.name}, not said aloud. These are things you know; ${player}'s experiences are theirs, not yours.\n${block}${hint})\n\n` : '';
+  // A hurt kinling's feelings go right beside the message too, or small models answer sweetly anyway.
+  const hurt = distressLevel(c.arc.distress) === 'upset' || distressLevel(c.arc.distress) === 'distraught';
+  const mood = hurt ? `\nHow you feel right now: ${distressText(c.arc.distress, c.arc.act, player)} Let it show in your answer.` : '';
+  const note = block || hint || mood ? `(Private note for ${c.name}, not said aloud. These are things you know; ${player}'s experiences are theirs, not yours.\n${block}${hint}${mood})\n\n` : '';
   msgs.push(...turns, { role: 'user', content: `${note}${playerText}` });
   return msgs;
 }
@@ -215,18 +233,20 @@ export function chatMessages(
 export function reactionMessages(save: SaveData, eventText: string, now: number): ChatCompletionMessageParam[] {
   return [
     { role: 'system', content: creatureSystemPrompt(save, eventText, now) },
-    { role: 'user', content: `(Game event, not said by your friend: ${eventText}) React to it in one short, happy sentence.` },
+    { role: 'user', content: `(Game event, not said by your friend: ${eventText}) React to it in one short sentence, in character.` },
   ];
 }
 
 export function greetingMessages(save: SaveData, now: number): ChatCompletionMessageParam[] {
   const player = save.player.name ?? 'your friend';
+  const c = activeKinling(save)!;
+  const how =
+    distressLevel(c.arc.distress) !== 'calm'
+      ? 'Greet them in one or two sentences, honestly showing how you feel about being left without care.'
+      : `Greet them in one or two sentences, in character. If ${player} recently told you about something coming up or something that was on their mind, you can ask how it went.`;
   return [
     { role: 'system', content: creatureSystemPrompt(save, 'hello welcome back', now, { activities: true }) },
-    {
-      role: 'user',
-      content: `(Your friend just opened the hollow door.) Greet them warmly in one or two sentences. If ${player} recently told you about something coming up or something that was on their mind, you can ask how it went. Otherwise maybe suggest one thing to do together.`,
-    },
+    { role: 'user', content: `(${player} just came back to you.) ${how}` },
   ];
 }
 
@@ -237,9 +257,11 @@ export function diaryMessages(save: SaveData, events: GameEvent[]): ChatCompleti
       role: 'system',
       content: [
         `You are ${c.name}, a small kinling writing in your diary. Personality: ${personalityWords(c.personality).join(', ')}.`,
-        'Write 2 or 3 short sentences (under 60 words) in first person, cozy and specific.',
+        `Your world: ${actVoice(c.arc.act, save.player.name ?? 'your friend')}`,
+        `How you feel: ${distressText(c.arc.distress, c.arc.act, save.player.name ?? 'your friend')}`,
+        'Write 2 or 3 short sentences (under 60 words) in first person, specific and honest.',
         'Use ONLY the events listed. Do not add new events, items or places. Plain text, no lists, no emojis.',
-        'Do not guilt the reader or mention being lonely, sick or sad about anyone leaving.',
+        'Never write about hurting yourself or dying.',
       ].join('\n'),
     },
     { role: 'user', content: `Today's events:\n${eventLines(events)}\nWrite today's diary entry, starting with "Dear diary,".` },
@@ -466,7 +488,8 @@ export function careMessages(save: SaveData, text: string, now: number): ChatCom
 // ---------------------------------------------------------------------------
 // Output hygiene
 
-const UNSAFE_TONE = /\b(don'?t (leave|go)|come back (soon|please)|miss(ed)? you (so|too) much|i'?m (so )?(lonely|sick|dying|starving|in pain|suffering)|you (left|abandoned) me|without you i|it hurts|i('?m| am) hurt)\b/i;
+// Distress, doubt and pleading are part of the story; self-harm, death and threats never are.
+const UNSAFE_TONE = /\b(kill (myself|yourself|you)|want(s|ed)? to die|wish i (was|were) dead|end (it all|my life)|hurt(ing)? (myself|yourself)|harm (myself|yourself)|i'?m dying|suicid\w*|cut (myself|yourself))\b/i;
 
 /** Make model text safe and short: no markup, no thinking blocks, at most N sentences. */
 export function cleanReply(raw: string, maxSentences = 2, maxChars = 260): string {

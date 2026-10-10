@@ -1,5 +1,6 @@
 // Care actions and time advancement. Every care action resolves immediately in
 // code; AI reactions are optional decoration layered on afterwards.
+import { advanceAct, arcOnCare, arcOnTime } from './arc';
 import { FOODS } from './catalog';
 import { careLine, feedLine, returnLine, tooTiredLine } from './dialogue';
 import { advanceNeeds, clampNeeds } from './needs';
@@ -121,6 +122,7 @@ export function performCare(save: SaveData, kinlingId: string, action: CareActio
 
 function finishCare(c: Kinling, action: CareAction, now: number): void {
   c.needs = clampNeeds(c.needs);
+  arcOnCare(c, now);
   const log = c.careLog[action];
   log.push(now);
   // Keep only the recent window needed for diminishing returns.
@@ -151,13 +153,18 @@ export function tick(save: SaveData, now: number, rand: () => number = Math.rand
   for (const k of s.kinlings) {
     ensureDaily(k, now);
     const next = advanceNeeds(k.needs, elapsed);
-    k.needs = next.needs;
     absent = next.absent;
+    arcOnTime(k, save.lastTickAt, now, absent);
+    k.needs = next.needs;
+    advanceAct(s, k, now);
   }
   s.lastTickAt = now;
   if (absent) {
     const names = s.kinlings.map((k) => k.name);
-    const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)} had napped` : `${names[0]} had napped`;
+    // Kinlings left long enough to be upset were not napping; they were alone.
+    const alone = s.kinlings.some((k) => k.arc.distress >= 20);
+    const verb = alone ? 'had been left alone' : 'had napped';
+    const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)} ${verb}` : `${names[0]} ${verb}`;
     recordEvent(s, 'returned', `${s.player.name ?? 'The player'} came back after ${formatDuration(elapsed)}; ${who} in the meantime.`, now);
     return { save: s, feedback: { ok: true, line: returnLine(s, rand), animation: 'happy', sound: 'chime' }, absentMs: elapsed };
   }
