@@ -10,6 +10,7 @@ import { PERSONALITY_KEYS, type Personality } from '../game/types';
 import { uid } from '../game/util';
 import { buildChatPrompt, buildEvolvePrompt } from './build';
 import { applyDeltas, parseTraitProposal } from './evolve';
+import { afterChatTurn, catchUp, labNow } from './story';
 import { labKinling } from './templates';
 import type { CallKind, CallRecord, LabSession, RequestBody, TraitStep } from './types';
 
@@ -63,9 +64,10 @@ async function loggedComplete(api: LabStoreApi, meta: { turnId: string | null; k
 export async function runTurn(api: LabStoreApi, playerText: string): Promise<void> {
   const text = playerText.trim();
   if (!text) return;
-  const s0 = api.get();
+  const start = api.get();
+  const now = labNow(start);
+  const s0 = { ...start, save: catchUp(start.save, now) };
   const cfg = s0.config.chat;
-  const now = Date.now();
   const turnId = uid('turn');
   const index = s0.turns.length + 1;
 
@@ -74,7 +76,8 @@ export async function runTurn(api: LabStoreApi, playerText: string): Promise<voi
     const withMessage = addChatMessage({ ...s0.save, activeKinlingId: s0.kinlingId }, s0.kinlingId, 'player', text, 'player', now);
     vectors = await recallVectors(withMessage, text).catch(() => null);
   }
-  const prompt = buildChatPrompt(s0, text, now, vectors);
+  const status = ai.getStatus();
+  const prompt = buildChatPrompt(s0, text, now, vectors, 'modelId' in status ? status.modelId : null);
   api.update((s) => ({ ...s, save: prompt.save, turns: [...s.turns, { id: turnId, index, at: now, playerText: text, reply: '', callIds: [] }] }));
 
   const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'chat' }, {
@@ -90,10 +93,11 @@ export async function runTurn(api: LabStoreApi, playerText: string): Promise<voi
   api.update((s) => ({
     ...s,
     updatedAt: Date.now(),
-    save: addChatMessage(s.save, s.kinlingId, 'creature', reply || '…', 'ai', Date.now()),
+    save: addChatMessage(s.save, s.kinlingId, 'creature', reply || '…', 'ai', labNow(s)),
     turns: s.turns.map((t) => (t.id === turnId ? { ...t, reply: reply || '…' } : t)),
   }));
 
+  afterChatTurn(api, text);
   const evolve = api.get().config.evolve;
   if (evolve.enabled && index % Math.max(1, evolve.every) === 0) await evolveNow(api);
 }

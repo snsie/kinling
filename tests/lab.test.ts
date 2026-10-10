@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { chatMessages } from '../src/ai/prompts';
+import { arcChat } from '../src/game/arc';
 import { replyBudget } from '../src/game/intent';
 import { addChatMessage } from '../src/game/social';
 import { buildChatPrompt, buildEvolvePrompt, systemText } from '../src/lab/build';
 import { toChatML } from '../src/lab/chatml';
 import { diffLines, hasChanges } from '../src/lab/diff';
 import { applyDeltas, evolveSchema, parseTraitProposal } from '../src/lab/evolve';
-import { freshSession, sessionFromGame } from '../src/lab/session';
-import { growthNotes, labKinling, renderTemplate } from '../src/lab/templates';
+import { freshSession, normalizeSession, sessionFromGame } from '../src/lab/session';
+import { labCare, passTime, playBeatById, setArc } from '../src/lab/story';
+import { growthNotes, labKinling, renderTemplate, templateVars } from '../src/lab/templates';
 import type { LabSession, TraitStep } from '../src/lab/types';
-import { hatchedSave, kin, T0 } from './helpers';
+import { HOUR, hatchedSave, kin, T0 } from './helpers';
 
 const base = { curiosity: 50, confidence: 50, playfulness: 50 };
 
@@ -89,7 +91,7 @@ describe('lab prompts', () => {
     const k = kin(save);
     const session = sessionFromGame(save, k.id, T0);
     const text = 'I climbed the big tree today!';
-    const expected = chatMessages(addChatMessage(save, k.id, 'player', text, 'player', T0), text, T0, replyBudget(text));
+    const expected = chatMessages(arcChat(addChatMessage(save, k.id, 'player', text, 'player', T0), k.id, text, T0), text, T0, replyBudget(text));
     expect(buildChatPrompt(session, text, T0).messages).toEqual(expected);
   });
 
@@ -131,5 +133,56 @@ describe('lab prompts', () => {
     expect(k.baseline).toEqual(k.personality);
     expect(s.save.player.name).toBe('Sam');
     expect(s.seed).not.toBe(s.save);
+  });
+});
+
+describe('lab story controls', () => {
+  function api(start: LabSession) {
+    let s = start;
+    return { get: () => s, update: (fn: (x: LabSession) => LabSession) => void (s = fn(s)) };
+  }
+
+  it('time passing without care builds distress, care calms it, and both are charted', () => {
+    const a = api(freshSession({ egg: 'woodland', name: 'Pip', player: 'Ana', personality: base }, Date.now()));
+    passTime(a, 30);
+    const k = labKinling(a.get());
+    expect(k.arc.distress).toBeGreaterThanOrEqual(70);
+    expect(a.get().clockOffset).toBe(30 * HOUR);
+    expect(a.get().turns.some((t) => t.event?.includes('pass with no care'))).toBe(true);
+    labCare(a, 'groom');
+    expect(labKinling(a.get()).arc.distress).toBeLessThan(k.arc.distress);
+    expect(a.get().arcSteps.map((x) => x.label)).toEqual(expect.arrayContaining(['30 hours away', 'care groom']));
+  });
+
+  it('hand edits set the act and collapse into one step; forced beats play', () => {
+    const a = api(freshSession({ egg: 'woodland', name: 'Pip', player: 'Ana', personality: base }, Date.now()));
+    setArc(a, { act: 'awakening' });
+    setArc(a, { distress: 50 });
+    expect(labKinling(a.get()).arc).toMatchObject({ act: 'awakening', distress: 50 });
+    expect(a.get().arcSteps).toHaveLength(1);
+    expect(playBeatById(a, 'awake-house')).toBe(true);
+    expect(a.get().turns.at(-1)).toMatchObject({ beat: 'awake-house', event: 'Beat · awake-house (forced)' });
+  });
+
+  it('custom templates can use the story variables', () => {
+    const s = freshSession({ egg: 'woodland', name: 'Pip', player: 'Ana', personality: base }, T0);
+    const vars = templateVars(s);
+    expect(vars.act).toBe('Devotion');
+    expect(vars.actVoice).toMatch(/kind god/);
+    expect(vars.distress).toBe('0');
+  });
+
+  it('sessions saved before the story are upgraded when opened', () => {
+    const s = freshSession({ egg: 'woodland', name: 'Pip', player: 'Ana', personality: base }, T0);
+    const old = structuredClone(s) as unknown as { save: { schemaVersion: number; kinlings: Record<string, unknown>[]; settings: Record<string, unknown> }; arcSteps?: unknown; config: Record<string, unknown> };
+    old.save.schemaVersion = 5;
+    for (const k of old.save.kinlings) delete k.arc;
+    delete old.save.settings.story;
+    delete old.arcSteps;
+    delete old.config.story;
+    const up = normalizeSession(old as unknown as LabSession);
+    expect(labKinling(up).arc.act).toBe('devotion');
+    expect(up.arcSteps).toEqual([]);
+    expect(up.config.story).toEqual({ rules: true, beats: true });
   });
 });

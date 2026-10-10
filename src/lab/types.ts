@@ -2,7 +2,7 @@
 // model call made along the way, and how its traits moved turn by turn.
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import type { CompletionUsage } from '../ai/engine';
-import type { Personality, SaveData } from '../game/types';
+import type { ArcAct, Personality, SaveData } from '../game/types';
 
 /** 'game' sends exactly what the game would; 'custom' uses the editable template. */
 export type PromptMode = 'game' | 'custom';
@@ -46,9 +46,17 @@ export interface EvolveConfig {
   recordReflections: boolean;
 }
 
+export interface StoryConfig {
+  /** Apply the game's story rules: chat moves distress and awareness, as in the game. */
+  rules: boolean;
+  /** Play the game's authored beats when they fit (after chats, care, time passing). */
+  beats: boolean;
+}
+
 export interface LabConfig {
   chat: ChatConfig;
   evolve: EvolveConfig;
+  story: StoryConfig;
 }
 
 export type CallKind = 'chat' | 'evolve' | 'rerun';
@@ -105,9 +113,25 @@ export interface LabTurn {
   id: string;
   index: number;
   at: number;
+  /** Empty for story events (beats, time passing, care). */
   playerText: string;
   reply: string;
   callIds: string[];
+  /** A story event rather than a player message: what happened. */
+  event?: string;
+  /** The beat played, if any. */
+  beat?: string;
+}
+
+/** The story's state after something changed it. */
+export interface ArcStep {
+  id: string;
+  at: number;
+  turnIndex: number;
+  label: string;
+  act: ArcAct;
+  distress: number;
+  awareness: number;
 }
 
 export interface LabSession {
@@ -124,5 +148,8 @@ export interface LabSession {
   turns: LabTurn[];
   calls: CallRecord[];
   traitSteps: TraitStep[];
+  arcSteps: ArcStep[];
+  /** Virtual time added by "time passes", in ms. The lab's clock is Date.now() + this. */
+  clockOffset: number;
   config: LabConfig;
 }

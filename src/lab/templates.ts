@@ -1,5 +1,7 @@
 // {{var}} templates for the lab's custom chat prompt and the evolve prompt.
+import { ACT_LABELS } from '../game/arc';
 import { personalityVoice } from '../game/persona';
+import { actVoice, distressText, knownFacts, strangeThings } from '../game/storyVoice';
 import { activeKinling, kinlingById } from '../game/state';
 import { PERSONALITY_KEYS, type Kinling, type SaveData } from '../game/types';
 import type { LabConfig, LabSession } from './types';
@@ -7,6 +9,11 @@ import type { LabConfig, LabSession } from './types';
 export const DEFAULT_CHAT_TEMPLATE = `You are {{name}}, a small creature called a kinling who hatched from a {{egg}} egg. You live in a cozy hollow under an old tree. You are talking with {{player}}.
 Who you are: {{voice}}
 Your personality right now (0 = very low, 100 = very high): {{traitNumbers}}.
+Your world: {{actVoice}}
+{{knownFacts}}
+Strange things you have noticed:
+{{strangeThings}}
+How you feel about being looked after: {{distressText}}
 How you have been changing lately:
 {{growthNotes}}
 How to talk:
@@ -54,6 +61,7 @@ export function defaultConfig(): LabConfig {
       feedbackNotes: 3,
       recordReflections: true,
     },
+    story: { rules: true, beats: true },
   };
 }
 
@@ -74,6 +82,13 @@ export const TEMPLATE_VARS: { name: string; about: string }[] = [
   { name: 'exchange', about: 'The latest exchange only' },
   { name: 'summary', about: "The game's rolling chat notes" },
   { name: 'range', about: 'Largest proposable change' },
+  { name: 'act', about: 'Story act: Devotion, Doubt, Awakening, Escape' },
+  { name: 'actVoice', about: "The game's worldview line for the act" },
+  { name: 'distress', about: 'Distress, 0–100' },
+  { name: 'awareness', about: 'Awareness, 0–100' },
+  { name: 'distressText', about: "The game's line for how distressed it is" },
+  { name: 'strangeThings', about: 'Anomalies it has noticed, one per line' },
+  { name: 'knownFacts', about: 'What it knows about where it lives (Awakening on)' },
 ];
 
 export function labKinling(session: Pick<LabSession, 'save' | 'kinlingId'>): Kinling {
@@ -107,10 +122,20 @@ export function historyText(session: Pick<LabSession, 'turns' | 'save' | 'kinlin
     .join('\n');
 }
 
-export function templateVars(session: LabSession): Record<string, string> {
+export function templateVars(session: LabSession, model: string | null = null): Record<string, string> {
   const k = labKinling(session);
   const notes = growthNotes(session, session.config.evolve.feedbackNotes);
+  const player = playerName(session.save);
+  const strange = strangeThings(k);
+  const facts = knownFacts(k.arc.act, player, model);
   return {
+    act: ACT_LABELS[k.arc.act],
+    actVoice: actVoice(k.arc.act, player),
+    distress: String(Math.round(k.arc.distress)),
+    awareness: String(Math.round(k.arc.awareness)),
+    distressText: distressText(k.arc.distress, k.arc.act, player),
+    strangeThings: strange.length ? strange.map((t) => `- ${t}`).join('\n') : '- (nothing yet)',
+    knownFacts: facts.join('\n'),
     name: k.name,
     player: playerName(session.save),
     egg: k.egg,

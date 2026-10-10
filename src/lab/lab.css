@@ -26,6 +26,8 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
   --grid: #e8e0d5;
   --mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
 }
@@ -57,6 +59,8 @@
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
     --grid: #332e28;
   }
 }
@@ -87,6 +91,8 @@
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
   --grid: #332e28;
 }
 
@@ -245,3 +251,9 @@ table.deltas th, table.deltas td { padding: 2px 10px 2px 0; text-align: left; }
 table.deltas td.num { font-family: var(--mono); text-align: right; }
 .reruns { border-left: 3px solid var(--warn); padding-left: 8px; display: flex; flex-direction: column; gap: 8px; }
 .empty { color: var(--ink-3); padding: 24px 12px; text-align: center; }
+
+.turn.event { cursor: pointer; }
+.event-chip { align-self: center; font-size: 11px; color: var(--ink-2); border: 1px dashed var(--edge); border-radius: 10px; padding: 1px 8px; background: var(--panel); }
+.bubble.beat { border-style: dashed; }
+.beats-list { font-size: 11px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 4px; }
+.chart-switch { padding: 8px 12px 0; background: var(--panel); display: flex; justify-content: flex-end; }

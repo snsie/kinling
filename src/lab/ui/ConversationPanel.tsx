@@ -4,9 +4,19 @@ import { useEffect, useRef, useState } from 'react';
 import { lab, type LabState } from '../store';
 import type { LabSession, LabTurn } from '../types';
 import { PERSONALITY_KEYS, signed, TRAIT_COLORS } from './controls';
-import { TraitChart } from './TraitChart';
+import { ArcChart, TraitChart } from './TraitChart';
+
+function EventView({ turn, selected }: { turn: LabTurn; selected: boolean }) {
+  return (
+    <div className="turn event" aria-current={selected} onClick={() => lab.selectTurn(turn.id)}>
+      <span className="event-chip">{turn.event}</span>
+      {turn.reply && <div className={`bubble kin${turn.beat ? ' beat' : ''}`}>{turn.reply}</div>}
+    </div>
+  );
+}
 
 function TurnView({ session, turn, selected }: { session: LabSession; turn: LabTurn; selected: boolean }) {
+  if (turn.event) return <EventView turn={turn} selected={selected} />;
   const chat = session.calls.find((c) => c.turnId === turn.id && c.kind === 'chat');
   const steps = session.traitSteps.filter((s) => s.turnId === turn.id && !s.manual);
   const evolves = session.calls.filter((c) => c.turnId === turn.id && c.kind === 'evolve');
@@ -123,6 +133,7 @@ function Composer({ state }: { state: LabState }) {
 export function ConversationPanel({ state }: { state: LabState }) {
   const s = state.session;
   const end = useRef<HTMLDivElement>(null);
+  const [chart, setChart] = useState<'story' | 'traits'>('story');
   const lastTurn = s?.turns.at(-1);
   const lastCall = s?.calls.at(-1);
   useEffect(() => {
@@ -133,7 +144,17 @@ export function ConversationPanel({ state }: { state: LabState }) {
   const selected = state.selectedTurnId ?? lastTurn?.id ?? null;
   return (
     <>
-      <TraitChart session={s} onSelectTurn={(id) => lab.selectTurn(id)} />
+      <div className="chart-switch">
+        <div className="seg" role="group" aria-label="Chart">
+          <button aria-pressed={chart === 'story'} onClick={() => setChart('story')}>
+            Story
+          </button>
+          <button aria-pressed={chart === 'traits'} onClick={() => setChart('traits')}>
+            Traits
+          </button>
+        </div>
+      </div>
+      {chart === 'story' ? <ArcChart session={s} onSelectTurn={(id) => lab.selectTurn(id)} /> : <TraitChart session={s} onSelectTurn={(id) => lab.selectTurn(id)} />}
       <div className="turns">
         {s.turns.length === 0 && <div className="empty">No messages yet. Say hello!</div>}
         {s.turns.map((t) => (
