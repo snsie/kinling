@@ -43,6 +43,33 @@ export interface CompletionRequest {
   timeoutMs?: number;
   /** Low-priority work (notes, suggestions) that a queued request may interrupt. */
   background?: boolean;
+  /** Sampling overrides; defaults are 0.9, 0.3 and 0 (penalties apply to free text only). */
+  topP?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  /** Called once with token counts at the end of the stream. */
+  onUsage?: (usage: CompletionUsage) => void;
+}
+
+export interface CompletionUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+/** The exact request body sent to WebLLM for a completion. */
+export function completionBody(req: CompletionRequest) {
+  return {
+    messages: req.messages,
+    stream: true as const,
+    max_tokens: req.maxTokens,
+    temperature: req.temperature ?? (req.jsonSchema ? 0.4 : 0.8),
+    top_p: req.topP ?? 0.9,
+    ...(req.jsonSchema
+      ? { response_format: { type: 'json_object' as const, schema: req.jsonSchema } }
+      : { frequency_penalty: req.frequencyPenalty ?? 0.3, presence_penalty: req.presencePenalty ?? 0 }),
+    ...(req.onUsage ? { stream_options: { include_usage: true } } : {}),
+    extra_body: { enable_thinking: false },
+  };
 }
 
 export class AiBusyError extends Error {
@@ -381,18 +408,9 @@ export class AiService {
       // leftover interrupt flag *before* generating and returns "" without
       // clearing it, so after a cancelled reply every non-streamed request
       // would come back empty. Streaming requests reset that flag first.
-      const stream = await engine.chat.completions.create({
-        messages: req.messages,
-        stream: true,
-        max_tokens: req.maxTokens,
-        temperature: req.temperature ?? (req.jsonSchema ? 0.4 : 0.8),
-        top_p: 0.9,
-        ...(req.jsonSchema
-          ? { response_format: { type: 'json_object' as const, schema: req.jsonSchema } }
-          : { frequency_penalty: 0.3, presence_penalty: 0 }),
-        extra_body: { enable_thinking: false },
-      });
+      const stream = await engine.chat.completions.create(completionBody(req));
       for await (const chunk of stream) {
+        if (chunk.usage) req.onUsage?.({ promptTokens: chunk.usage.prompt_tokens, completionTokens: chunk.usage.completion_tokens });
         const delta = chunk.choices[0]?.delta?.content ?? '';
         if (!delta) continue;
         text += delta;

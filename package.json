@@ -6,6 +6,7 @@
   "description": "A cozy browser creature companion with local WebGPU AI.",
   "scripts": {
     "dev": "vite",
+    "lab": "vite --open /lab.html",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty",
