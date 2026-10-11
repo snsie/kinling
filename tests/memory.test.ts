@@ -290,7 +290,8 @@ describe('persona', () => {
 
 describe('chat prompt', () => {
   it('brings relevant memories next to the message, with a hint for questions about the player', () => {
-    const s = chatted(['we just got a puppy named Biscuit', 'I love rainy days', 'my sister Maya turns seven next week']);
+    // Small talk first pushes the news out of the chat sent word for word, so it has to be recalled.
+    const s = chatted(['we just got a puppy named Biscuit', 'I love rainy days', 'my sister Maya turns seven next week', 'ok', 'lol', 'cool']);
     const msgs = chatMessages(s, "what's my dog's name?", T0 + HOUR);
     const last = String(msgs.at(-1)!.content);
     expect(last).toMatch(/Memories that come to mind:\n- Sam shared|Memories that come to mind:\n- Sam told me they just got a puppy named Biscuit/);

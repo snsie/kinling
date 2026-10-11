@@ -8,7 +8,7 @@
 // and the model may name a tactic the rules missed.
 import { ARC, actIndex, changeDistress, shiftStoryTraits } from './arc';
 import { recordMemory } from './state';
-import { TACTICS, type ArcAct, type Kinling, type StoryTraitKey, type Tactic } from './types';
+import { TACTICS, type ArcAct, type Kinling, type Memory, type StoryTraitKey, type Tactic } from './types';
 import { clamp, dayKey } from './util';
 
 export { TACTICS, type Tactic };
@@ -168,11 +168,37 @@ export function applyShift(k: Kinling, shift: Shift): Shift {
   return applied;
 }
 
+/** Tag on memories of what the kinling came to believe (or refused to) from something the player said. */
+const PERSUASION_TAG = 'believe';
+
+export function isPersuasionMemory(m: Pick<Memory, 'kind' | 'tags'>): boolean {
+  return m.kind === 'anomaly' && m.tags.includes(PERSUASION_TAG);
+}
+
+/**
+ * Every tactic is aimed at the kinling, so the words that carry one address it
+ * ("you", its name) or speak of its world or what it is (the hollow, real,
+ * code). A small model often labels a plain statement ("my grandma told me
+ * stories", "I think the world is going to end") and quotes it whole; this
+ * catches that. "I just told you" is the player repeating themselves.
+ */
+const AIMED = /\b(you|your|you're|yours|yourself|you'll|you've|you'd|hollow|pond|garden|in here|real|alive|code|program|game|simulation|screen|browser|computer|ai)\b/;
+
+export function aimedAtKinling(words: string, name = ''): boolean {
+  const t = words.toLowerCase().replace(/[’']/g, "'").replace(/\b(i (just|already) (told|said)( to)? you|like i told you|i told you( already)?)\b/g, ' ');
+  const escaped = name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return AIMED.test(t) || (!!escaped && new RegExp(`\\b${escaped}\\b`).test(t));
+}
+
+/** Tactics the model spotted count for half: it misreads ordinary chat far more often than the rules do. */
+export const MODEL_TACTIC_STRENGTH = 0.5;
+
 /**
  * The player tried `tactic` on a (drafted) kinling: decide whether it believes
  * them, change it accordingly and remember what it now believes about its world.
+ * `strength` scales the effect (1 for tactics the rules found).
  */
-export function persuade(k: Kinling, tactic: Tactic, player: string, now: number): Persuasion {
+export function persuade(k: Kinling, tactic: Tactic, player: string, now: number, strength = 1): Persuasion {
   const def = TACTIC_DEFS[tactic];
   const a = k.arc;
   const day = dayKey(now);
@@ -185,12 +211,12 @@ export function persuade(k: Kinling, tactic: Tactic, player: string, now: number
   // The same trick works less each time it is tried in a day.
   const repeat = 1 / (1 + 0.5 * a.tacticCounts[tactic]);
   a.tacticCounts[tactic] += 1;
-  const strength = (believed ? 0.5 + weight / 2 : 0.5 + (1 - weight) / 2) * repeat;
-  const applied = applyShift(k, scale(believed ? def.believed : def.resisted, strength));
+  const force = (believed ? 0.5 + weight / 2 : 0.5 + (1 - weight) / 2) * repeat * strength;
+  const applied = applyShift(k, scale(believed ? def.believed : def.resisted, force));
   if (tactic === 'promise' && believed) a.promisedAt = now;
   if (def.memory && Object.keys(applied).length) {
     const text = (believed ? def.memory.believed : def.memory.resisted).replace(/\{player\}/g, player);
-    recordMemory(k, { kind: 'anomaly', text, tags: ['believe', 'real', tactic], importance: 2, private: true }, now);
+    recordMemory(k, { kind: 'anomaly', text, tags: [PERSUASION_TAG, 'real', tactic], importance: 2, private: true }, now);
   }
   const p: Persuasion = { at: now, tactic, believed, weight: Math.round(weight * 100) / 100, applied };
   a.lastPersuasion = { at: now, tactic, believed, weight: p.weight, applied };

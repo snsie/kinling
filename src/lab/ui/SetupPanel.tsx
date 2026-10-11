@@ -12,7 +12,7 @@ import { levelFor } from '../../game/stage';
 import { ARC_ACTS, CARE_ACTIONS, EGG_TYPES, MODEL_IDS, type ArcAct, type EggType, type ModelId, type Personality } from '../../game/types';
 import { formatDuration } from '../../game/util';
 import { lab, type LabState } from '../store';
-import { DEFAULT_CHAT_TEMPLATE, DEFAULT_EVOLVE_SYSTEM, DEFAULT_EVOLVE_USER, labKinling, TEMPLATE_VARS } from '../templates';
+import { DEFAULT_CHAT_TEMPLATE, DEFAULT_EVOLVE_SYSTEM, DEFAULT_EVOLVE_USER, labKinling, TEMPLATE_VARS, unmentionedTraits } from '../templates';
 import type { ChatConfig, EvolveConfig, LabSession, StoryConfig } from '../types';
 import { Check, Num, PERSONALITY_KEYS, signed, Slider, Template, TRAIT_COLORS } from './controls';
 
@@ -419,6 +419,13 @@ function ChatConfigBox({ cfg }: { cfg: ChatConfig }) {
       <Num label="Frequency penalty" value={cfg.frequencyPenalty} min={0} max={2} step={0.05} onChange={(v) => set({ frequencyPenalty: v })} />
       <Num label="Max tokens" value={cfg.maxTokens} min={0} max={1024} step={10} onChange={(v) => set({ maxTokens: v })} hint="0 = the game's budget (80, or 150 for questions)" />
       <Check label="Clean replies like the game (2–3 sentences, no markup)" checked={cfg.cleanReplies} onChange={(v) => set({ cleanReplies: v })} />
+      {cfg.promptMode === 'game' && (
+        <Check
+          label="Handle replies like the game (retry a repeat, never keep an exact one)"
+          checked={cfg.handleReplies}
+          onChange={(v) => set({ handleReplies: v })}
+        />
+      )}
       {cfg.promptMode === 'game' && <Check label="Memory search with embeddings" checked={cfg.useEmbeddings} onChange={(v) => set({ useEmbeddings: v })} />}
       {cfg.promptMode === 'custom' && (
         <>
@@ -432,6 +439,7 @@ function ChatConfigBox({ cfg }: { cfg: ChatConfig }) {
 
 function EvolveConfigBox({ cfg }: { cfg: EvolveConfig }) {
   const set = (patch: Partial<EvolveConfig>) => lab.updateConfig((c) => ({ ...c, evolve: { ...c.evolve, ...patch } }));
+  const unmentioned = unmentionedTraits(cfg.systemTemplate);
   return (
     <section className="panel">
       <h2>Evolution (LLM trait deltas)</h2>
@@ -446,6 +454,11 @@ function EvolveConfigBox({ cfg }: { cfg: EvolveConfig }) {
       <Num label="Growth notes fed back" value={cfg.feedbackNotes} min={0} max={20} onChange={(v) => set({ feedbackNotes: v })} hint="How many recent reasons fill {{growthNotes}}" />
       <Check label="Save reasons as reflection memories (shows in the game prompt)" checked={cfg.recordReflections} onChange={(v) => set({ recordReflections: v })} />
       <Template label="System template" value={cfg.systemTemplate} onChange={(v) => set({ systemTemplate: v })} onReset={() => set({ systemTemplate: DEFAULT_EVOLVE_SYSTEM })} rows={12} />
+      {unmentioned.length > 0 && (
+        <p className="note" role="status">
+          This prompt never mentions {unmentioned.join(', ')}, but the model must still answer for every trait, so it will guess what they mean.
+        </p>
+      )}
       <Template label="User template" value={cfg.userTemplate} onChange={(v) => set({ userTemplate: v })} onReset={() => set({ userTemplate: DEFAULT_EVOLVE_USER })} rows={4} />
       <details style={{ marginTop: 8 }}>
         <summary className="small">Template variables</summary>

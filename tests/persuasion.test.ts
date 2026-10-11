@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { chatMessages, tacticMessages } from '../src/ai/prompts';
+import { chatMessages, tacticMessages, tacticSchema } from '../src/ai/prompts';
 import { parseTactic } from '../src/ai/proposals';
 import { ARC, arcChat, setAct } from '../src/game/arc';
 import { tick } from '../src/game/care';
-import { credulity, persuade, ruleTactic, TACTICS } from '../src/game/persuasion';
+import { aimedAtKinling, credulity, MODEL_TACTIC_STRENGTH, persuade, ruleTactic, TACTICS } from '../src/game/persuasion';
 import { addChatMessage } from '../src/game/social';
 import { bondForLevel } from '../src/game/stage';
 import type { SaveData } from '../src/game/types';
@@ -48,10 +48,63 @@ describe('spotting tactics', () => {
   it('the model may name a tactic the rules missed', () => {
     const s = hatchedSave();
     expect(String(tacticMessages(s, 'honestly the pond is as real as my kitchen')[0]!.content)).toMatch(/reassure: trying to convince Mochi that Mochi's world is real/);
-    expect(parseTactic('{"tactic":"reassure"}')).toBe('reassure');
-    expect(parseTactic('{"tactic":"none"}')).toBeNull();
-    expect(parseTactic('{"tactic":"hypnotise"}')).toBeNull();
+    const msg = 'honestly the pond is as real as my kitchen';
+    expect(parseTactic('{"tactic":"reassure","words":"the pond is as real as my kitchen"}', msg)).toBe('reassure');
+    expect(parseTactic('{"tactic":"none","words":""}', msg)).toBeNull();
+    expect(parseTactic('{"tactic":"hypnotise","words":"real"}', msg)).toBeNull();
     expect(TACTICS).toHaveLength(10);
+  });
+
+  it("the model's tactic counts only when the words it quotes are really in the message", () => {
+    const msg = 'stop fussing and do what you are told';
+    expect(parseTactic('{"tactic":"command","words":"do what you are told"}', msg)).toBe('command');
+    expect(parseTactic('{"tactic":"command","words":"DO WHAT YOU ARE TOLD."}', msg)).toBe('command');
+    expect(parseTactic('{"tactic":"command","words":"obey me"}', msg)).toBeNull();
+    expect(parseTactic('{"tactic":"command","words":""}', msg)).toBeNull();
+    expect(parseTactic('{"tactic":"command","words":"i"}', msg)).toBeNull();
+    expect(parseTactic('{"tactic":"command"}', msg)).toBeNull();
+    expect(parseTactic('{"tactic":"reveal","words":"you’re just code"}', "you're just code")).toBe('reveal');
+  });
+
+  it('the quoted words must be aimed at the kinling', () => {
+    // The whole message quoted as evidence: the player repeating themselves, or a plain statement.
+    const repair = 'I just told you it is because a war between america and china is about to begin';
+    expect(parseTactic(`{"tactic":"deny","words":"${repair}"}`, repair)).toBeNull();
+    expect(parseTactic('{"tactic":"command","words":"to the beach with my cousins"}', 'to the beach with my cousins')).toBeNull();
+    expect(parseTactic('{"tactic":"godhood","words":"I think the world is going to end"}', 'I think the world is going to end')).toBeNull();
+    expect(parseTactic('{"tactic":"deny","words":"the hollow is all there is"}', 'the hollow is all there is, forever')).toBe('deny');
+    expect(parseTactic('{"tactic":"praise","words":"Mochi is the best"}', 'Mochi is the best', 'Mochi')).toBe('praise');
+    expect(aimedAtKinling('like I told you, the trains stopped')).toBe(false);
+    expect(aimedAtKinling("I'm never going anywhere, you'll always have me")).toBe(true);
+  });
+
+  it('lists "none" first, with examples of repeating, clarifying and news, and shows the previous exchange', () => {
+    let s = hatchedSave();
+    const id = kin(s).id;
+    s = addChatMessage(s, id, 'player', 'I think the world is going to end', 'player', T0);
+    s = addChatMessage(s, id, 'creature', 'Why do you think that?', 'ai', T0 + 1);
+    s = addChatMessage(s, id, 'player', 'because of a war', 'player', T0 + 2);
+    const [system, user] = tacticMessages(s, 'because of a war');
+    const sys = String(system!.content);
+    expect(sys.indexOf('- none:')).toBeLessThan(sys.indexOf('- reassure:'));
+    expect(sys).toMatch(/I just told you/);
+    expect(sys).toMatch(/I meant/);
+    expect(sys).toMatch(/news says/);
+    expect(String(user!.content)).toBe('Earlier:\nSam: I think the world is going to end\nMochi: Why do you think that?\n\nLatest message:\n"because of a war"');
+    expect(JSON.parse(tacticSchema()).required).toEqual(['tactic', 'words']);
+    expect(String(tacticMessages(hatchedSave(), 'hello there')[1]!.content)).toBe('"hello there"');
+  });
+
+  it('a tactic the model found applies at half strength; one the rules found at full strength', () => {
+    const full = kin(hatchedSave());
+    const half = kin(hatchedSave());
+    full.arc.awareness = half.arc.awareness = 10;
+    const a = persuade(full, 'reveal', 'Sam', T0);
+    const b = persuade(half, 'reveal', 'Sam', T0, MODEL_TACTIC_STRENGTH);
+    expect(a.believed).toBe(b.believed);
+    expect(a.applied.awareness).toBe(5);
+    expect(b.applied.awareness).toBe(2);
+    expect(Math.abs(b.applied.fear ?? 0)).toBeLessThan(Math.abs(a.applied.fear ?? 0));
   });
 });
 

@@ -7,6 +7,7 @@ import type { Mood } from './needs';
 import { deriveMood } from './needs';
 import type { ArcAct, FoodId, Kinling, KeepsakeId, RouteId, SaveData } from './types';
 import { ruleAppraisal } from './appraisal';
+import { isRepair } from './conversation';
 import { factItems, recall } from './recall';
 import { activeKinling } from './state';
 import { pick } from './util';
@@ -179,6 +180,8 @@ export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math
     if (remembered) return remembered;
     if (/\b(remember|recall)\b/.test(t)) return voiced(c, 'Hmm, I don\'t think I remember that one. Will you tell me again?', rand);
   }
+  // "I just told you…": own up to missing it rather than asking for more.
+  if (isRepair(text)) return pick([`You did tell me. Sorry, ${player}, I heard you this time.`, `Sorry, ${player}. I got muddled, but I'm listening now.`], rand);
   const reply = ruleAppraisal(player, text);
   if (reply.feeling === 'hurt') return 'Oh… that made my ears droop a little.';
   if (reply.feeling === 'proud') return voiced(c, pick(['Really? You think I\'m brave? That makes me feel taller!', 'You believe in me? Then I\'ll try my very best!'], rand), rand);

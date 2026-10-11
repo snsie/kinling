@@ -232,6 +232,7 @@ details > summary { cursor: pointer; color: var(--ink-2); }
 .badge.chat { background: var(--usr); border: 1px solid var(--usr-edge); }
 .badge.evolve { background: var(--sys); border: 1px solid var(--sys-edge); }
 .badge.rerun { background: var(--warn); color: var(--warn-ink); }
+.badge.retry { background: var(--warn); color: var(--warn-ink); }
 .badge.tactic { background: var(--panel-2); border: 1px solid var(--edge); }
 .chip.tactic { font-weight: 600; }
 .chip.tactic.believed { border-color: var(--asst-edge); background: var(--asst); }

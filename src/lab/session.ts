@@ -8,8 +8,8 @@ import { uid } from '../game/util';
 import { SaveStorage } from '../persistence/db';
 import { migrateSave } from '../persistence/migrations';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
-import { defaultConfig } from './templates';
-import type { LabConfig, LabSession } from './types';
+import { defaultConfig, upgradeEvolveSystem } from './templates';
+import type { EvolveConfig, LabConfig, LabSession } from './types';
 
 export interface FreshOptions {
   egg: EggType;
@@ -55,8 +55,13 @@ export function normalizeSession(s: LabSession): LabSession {
     traitSteps: s.traitSteps.map((t) => ({ ...t, before: fill(t.before), after: fill(t.after) })),
     arcSteps: s.arcSteps ?? [],
     clockOffset: s.clockOffset ?? 0,
-    config: { chat: { ...config.chat, ...s.config?.chat }, evolve: { ...config.evolve, ...s.config?.evolve }, story: { ...config.story, ...s.config?.story } },
+    config: { chat: { ...config.chat, ...s.config?.chat }, evolve: upgradeEvolve({ ...config.evolve, ...s.config?.evolve }), story: { ...config.story, ...s.config?.story } },
   };
+}
+
+/** An evolve prompt left at an old default moves to the current one (sessions keep their own copy). */
+function upgradeEvolve(evolve: EvolveConfig): EvolveConfig {
+  return { ...evolve, systemTemplate: upgradeEvolveSystem(evolve.systemTemplate) };
 }
 
 /** A newly hatched kinling with chosen traits, set up the way onboarding leaves it. */

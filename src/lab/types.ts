@@ -20,6 +20,12 @@ export interface ChatConfig {
   maxTokens: number;
   /** Apply the game's cleanReply/dropUnaskedOffer to the reply. */
   cleanReplies: boolean;
+  /**
+   * Game mode: handle replies as the game does. A reply that repeats a recent one is retried
+   * with less history, then replaced by authored text; an exact repeat is never kept. Off, the
+   * model's reply is stored as it came, so a loop can be watched building.
+   */
+  handleReplies: boolean;
   /** Game mode: memory search with embeddings (loads a second, small model). */
   useEmbeddings: boolean;
 }
@@ -61,7 +67,8 @@ export interface LabConfig {
   story: StoryConfig;
 }
 
-export type CallKind = 'chat' | 'evolve' | 'rerun' | 'tactic';
+/** 'retry' is the game's second attempt at a reply that repeated a recent one. */
+export type CallKind = 'chat' | 'retry' | 'evolve' | 'rerun' | 'tactic';
 
 /** completionBody() without the messages: the sampling settings actually sent. */
 export interface RequestBody {
@@ -118,6 +125,8 @@ export interface LabTurn {
   /** Empty for story events (beats, time passing, care). */
   playerText: string;
   reply: string;
+  /** 'authored' when reply handling replaced the model's reply. */
+  replySource?: 'ai' | 'authored';
   callIds: string[];
   /** A story event rather than a player message: what happened. */
   event?: string;

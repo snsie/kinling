@@ -3,10 +3,11 @@
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import { recallVectors } from '../ai/companion';
 import { ai, AiInterruptedError, completionBody, type CompletionRequest } from '../ai/engine';
-import { cleanReply, dropUnaskedOffer, tacticMessages, tacticSchema } from '../ai/prompts';
+import { cleanReply, dropUnaskedOffer, TACTIC_MAX_TOKENS, tacticMessages, tacticSchema } from '../ai/prompts';
 import { parseTactic } from '../ai/proposals';
+import { handledReply } from '../ai/reply';
 import { advanceAct } from '../game/arc';
-import { persuade, ruleTactic } from '../game/persuasion';
+import { MODEL_TACTIC_STRENGTH, persuade, ruleTactic } from '../game/persuasion';
 import { addChatMessage } from '../game/social';
 import { draft, kinlingById, recordMemory } from '../game/state';
 import { PERSONALITY_KEYS, type Personality } from '../game/types';
@@ -86,21 +87,30 @@ export async function runTurn(api: LabStoreApi, playerText: string): Promise<voi
   const persuasion = steered && steered.at === now ? { ...steered, source: 'rules' as const } : undefined;
   api.update((s) => ({ ...s, save: prompt.save, turns: [...s.turns, { id: turnId, index, at: now, playerText: text, reply: '', callIds: [], ...(persuasion ? { persuasion } : {}) }] }));
 
-  const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'chat' }, {
-    messages: prompt.messages,
-    maxTokens: cfg.maxTokens || prompt.budget.maxTokens,
-    temperature: cfg.temperature,
-    topP: cfg.topP,
-    frequencyPenalty: cfg.frequencyPenalty,
-    timeoutMs: 90_000,
-  });
-  const reply = cfg.cleanReplies ? dropUnaskedOffer(cleanReply(raw, prompt.budget.sentences, prompt.budget.maxChars), text) : raw.trim();
-  patchCall(api, id, { parsed: { reply } });
+  const clean = (raw: string) => (cfg.cleanReplies ? dropUnaskedOffer(cleanReply(raw, prompt.budget.sentences, prompt.budget.maxChars), text) : raw.trim());
+  // Each attempt is its own call in the inspector; a retry is logged as 'retry'.
+  const generate = async (messages: ChatCompletionMessageParam[], temperature: number, retry: boolean) => {
+    const call = await loggedComplete(api, { turnId, kind: retry ? 'retry' : 'chat' }, {
+      messages,
+      maxTokens: cfg.maxTokens || prompt.budget.maxTokens,
+      temperature,
+      topP: cfg.topP,
+      frequencyPenalty: cfg.frequencyPenalty,
+      timeoutMs: 90_000,
+    });
+    patchCall(api, call.id, { parsed: { reply: clean(call.text) } });
+    return call.text;
+  };
+  const result =
+    cfg.promptMode === 'game' && cfg.handleReplies
+      ? await handledReply(prompt.save, text, now, { budget: prompt.budget, vectors, temperature: cfg.temperature, clean, generate })
+      : { text: clean(await generate(prompt.messages, cfg.temperature, false)), source: 'ai' as const };
+  const reply = result.text || '…';
   api.update((s) => ({
     ...s,
     updatedAt: Date.now(),
-    save: addChatMessage(s.save, s.kinlingId, 'creature', reply || '…', 'ai', labNow(s)),
-    turns: s.turns.map((t) => (t.id === turnId ? { ...t, reply: reply || '…' } : t)),
+    save: addChatMessage(s.save, s.kinlingId, 'creature', reply, result.source, labNow(s)),
+    turns: s.turns.map((t) => (t.id === turnId ? { ...t, reply, replySource: result.source } : t)),
   }));
 
   const story = api.get().config.story;
@@ -114,14 +124,14 @@ export async function runTurn(api: LabStoreApi, playerText: string): Promise<voi
 async function modelTactic(api: LabStoreApi, turnId: string, text: string): Promise<void> {
   const s = api.get();
   const save = { ...s.save, activeKinlingId: s.kinlingId };
-  const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'tactic' }, { messages: tacticMessages(save, text), maxTokens: 16, temperature: 0, jsonSchema: tacticSchema(), timeoutMs: 20_000 });
-  const tactic = parseTactic(raw);
-  patchCall(api, id, { parsed: { tactic: tactic ?? 'none' } });
+  const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'tactic' }, { messages: tacticMessages(save, text), maxTokens: TACTIC_MAX_TOKENS, temperature: 0, jsonSchema: tacticSchema(), timeoutMs: 20_000 });
+  const tactic = parseTactic(raw, text, labKinling(s).name);
+  patchCall(api, id, { parsed: { tactic: tactic ?? 'none', ...(tactic ? { strength: MODEL_TACTIC_STRENGTH } : {}) } });
   if (!tactic) return;
   const at = labNow(api.get());
   const next = draft(api.get().save);
   const k = kinlingById(next, s.kinlingId)!;
-  const p = persuade(k, tactic, next.player.name ?? 'My friend', at);
+  const p = persuade(k, tactic, next.player.name ?? 'My friend', at, MODEL_TACTIC_STRENGTH);
   advanceAct(next, k, at);
   const persuasion = { ...k.arc.lastPersuasion!, applied: p.applied, source: 'model' as const };
   api.update((x) => ({ ...x, save: next, turns: x.turns.map((t) => (t.id === turnId ? { ...t, persuasion } : t)) }));

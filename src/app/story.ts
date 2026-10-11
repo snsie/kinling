@@ -7,7 +7,7 @@ import { ai } from '../ai/engine';
 import { modelName } from '../ai/models';
 import { classifyTactic } from '../ai/companion';
 import { advanceAct, distressLevel, leadKinling } from '../game/arc';
-import { persuade, ruleTactic } from '../game/persuasion';
+import { MODEL_TACTIC_STRENGTH, persuade, ruleTactic } from '../game/persuasion';
 import { nextBeat, playBeat, playedEffects, type ArcEnv, type BeatTrigger } from '../game/beats';
 import { activeKinling, draft } from '../game/state';
 import type { CareAction, SaveData } from '../game/types';
@@ -118,7 +118,7 @@ export function announcePersuasion(kinlingId: string, at: number): void {
   ui.toast(p.believed ? `${k.name} believed you.` : `${k.name} didn't believe you.`, 'info');
 }
 
-/** Background: when the rules saw no tactic, the model may; apply what it finds. */
+/** Background: when the rules saw no tactic, the model may; apply what it finds, at reduced strength. */
 export async function modelPersuasion(kinlingId: string, text: string): Promise<void> {
   const save = store.save;
   if (!save || !store.canWrite || ruleTactic(text)) return;
@@ -129,7 +129,7 @@ export async function modelPersuasion(kinlingId: string, text: string): Promise<
     const next = draft(s);
     const k = next.kinlings.find((x) => x.id === kinlingId);
     if (!k) return s;
-    persuade(k, tactic, next.player.name ?? 'My friend', at);
+    persuade(k, tactic, next.player.name ?? 'My friend', at, MODEL_TACTIC_STRENGTH);
     advanceAct(next, k, at);
     return next;
   });

@@ -96,10 +96,8 @@ describe('prompt context', () => {
     expect(msgs[0]!.role).toBe('system');
     expect(msgs.length).toBeLessThanOrEqual(8);
     expect(msgs.at(-1)!.role).toBe('user');
-    // The message itself comes last, after a private note of what it brings to mind.
-    const last = String(msgs.at(-1)!.content);
-    expect(last.startsWith('(Private note for Mochi')).toBe(true);
-    expect(last.endsWith(')\n\nwhat should we do?')).toBe(true);
+    // The message itself comes last. Nothing it brings to mind, so no note is padded in front of it.
+    expect(String(msgs.at(-1)!.content)).toBe('what should we do?');
     const sys = creatureSystemPrompt(s, 'garden', T0);
     expect(sys).toContain('Mochi');
     expect(sys).toMatch(/never talk about hurting yourself or dying/);

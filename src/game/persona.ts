@@ -17,7 +17,7 @@ import { PLAYER_ID } from './types';
  */
 export function personalityVoice(p: Personality, player = 'your friend'): string[] {
   const out: string[] = [];
-  out.push(p.curiosity >= 62 ? 'very curious, full of questions' : p.curiosity <= 38 ? 'cautious, fond of familiar things' : 'curious');
+  out.push(p.curiosity >= 62 ? 'very curious about everything' : p.curiosity <= 38 ? 'cautious, fond of familiar things' : 'curious');
   out.push(p.confidence >= 62 ? 'bold' : p.confidence <= 38 ? 'shy and hesitant ("um…")' : 'gentle');
   out.push(p.playfulness >= 62 ? 'very playful and silly' : p.playfulness <= 38 ? 'calm and quiet' : 'fond of a bit of fun');
   out.push(...storyTraitVoice(p, player));

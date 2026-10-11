@@ -4,7 +4,6 @@
 // busy. Model output only ever becomes display text or a *proposal* that game
 // code validates.
 import { groundedSentences, mergeAppraisal, ruleAppraisal, type Appraisal } from '../game/appraisal';
-import { offlineChatReply } from '../game/dialogue';
 import { slotOf, type EvolutionRequest } from '../game/evolution';
 import { parseAppearanceRequest } from '../game/requestParser';
 import type { ProposedAction } from '../game/careProposals';
@@ -20,14 +19,10 @@ import {
   appraisalSchema,
   careMessages,
   careSchema,
-  chatMessages,
   cleanReply,
   diaryMessages,
   dropUnaskedOffer,
-  dropRepeatedTail,
-  repeatsRecent,
   evolutionMessages,
-  exampleReplies,
   evolutionSchema,
   factMessages,
   factSchema,
@@ -38,9 +33,11 @@ import {
   summaryMessages,
   tacticMessages,
   tacticSchema,
+  TACTIC_MAX_TOKENS,
   toneIsSafe,
   type RecallVectors,
 } from './prompts';
+import { authoredReply, handledReply, usable } from './reply';
 import { mergeKeep, parseAppraisal, parseCareProposal, parseEvolutionProposal, parseFactProposal, parseIntent, parseTactic } from './proposals';
 
 export interface TextResult {
@@ -52,10 +49,6 @@ export interface TextResult {
 /** Fallbacks are silent for players; keep a trace in the console for debugging. */
 function logFallback(where: string, err: unknown) {
   console.warn(`[kinling ai] ${where} fell back to authored text:`, err);
-}
-
-function usable(text: string): boolean {
-  return text.length >= 2 && toneIsSafe(text);
 }
 
 /**
@@ -98,26 +91,18 @@ export function warmRecall(save: SaveData): void {
 
 /** Stream a reply to the player. Falls back to authored text on any problem. */
 export async function chatReply(save: SaveData, playerText: string, now: number, onText?: (t: string) => void): Promise<TextResult> {
-  const fallback = () => ({ text: offlineChatReply(save, playerText, Math.random, now), source: 'authored' as const });
+  const fallback = () => ({ text: authoredReply(save, playerText, now), source: 'authored' as const });
   if (!ai.isLoaded) return fallback();
   const budget = replyBudget(playerText);
   const clean = (t: string) => dropUnaskedOffer(cleanReply(t, budget.sentences, budget.maxChars), playerText);
   try {
     const vectors = await recallVectors(save, playerText);
-    const raw = await ai.completeQueued({ messages: chatMessages(save, playerText, now, budget, vectors), maxTokens: budget.maxTokens, temperature: 0.7, onText: (t) => onText?.(clean(t)) });
-    let text = clean(raw);
-    // Small models drift into repeating their own last replies or parroting the
-    // player; try once more without the earlier replies in view.
-    const recent = (activeKinling(save)?.chat ?? []).filter((m) => m.role === 'creature').slice(-3).map((m) => m.text);
-    const examples = exampleReplies(save);
-    if (repeatsRecent(text, [...recent, playerText, ...examples])) {
-      const again = clean(await ai.completeQueued({ messages: chatMessages(save, playerText, now, budget, vectors, 2), maxTokens: budget.maxTokens, temperature: 0.9, onText: (t) => onText?.(clean(t)) }));
-      // Still a copy of a style example: the kinling's own words are better than that.
-      if (repeatsRecent(again, examples)) return fallback();
-      if (usable(again)) text = again;
-    }
-    text = dropRepeatedTail(text, recent);
-    return usable(text) ? { text, source: 'ai' } : fallback();
+    return await handledReply(save, playerText, now, {
+      budget,
+      vectors,
+      clean,
+      generate: (messages, temperature) => ai.completeQueued({ messages, maxTokens: budget.maxTokens, temperature, onText: (t) => onText?.(clean(t)) }),
+    });
   } catch (err) {
     if (err instanceof AiInterruptedError) {
       const text = clean(err.partial);
@@ -215,8 +200,8 @@ export async function appraiseMessage(save: SaveData, kinlingId: string, playerT
 export async function classifyTactic(save: SaveData, text: string): Promise<Tactic | null> {
   if (!ai.isReady || ai.isBusy || text.trim().length < 12) return null;
   try {
-    const raw = await ai.complete({ messages: tacticMessages(save, text), maxTokens: 16, temperature: 0, jsonSchema: tacticSchema(), timeoutMs: 10_000, background: true });
-    return parseTactic(raw);
+    const raw = await ai.complete({ messages: tacticMessages(save, text), maxTokens: TACTIC_MAX_TOKENS, temperature: 0, jsonSchema: tacticSchema(), timeoutMs: 10_000, background: true });
+    return parseTactic(raw, text, activeKinling(save)?.name);
   } catch (err) {
     if (!(err instanceof AiInterruptedError) && !(err instanceof AiBusyError)) logFallback('persuasion', err);
     return null;

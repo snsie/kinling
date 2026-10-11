@@ -87,6 +87,21 @@ export function voiceExamples(k: Pick<Kinling, 'arc'>): string[] {
   return level === 'upset' || level === 'distraught' ? HURT_EXAMPLES[k.arc.act] : ACT_EXAMPLES[k.arc.act];
 }
 
+/**
+ * How to take things from the player's world (countries, news, jobs) it has
+ * never seen. Without this, "never make up places or events" leaves asking
+ * what they mean as the only safe reply, and small models ask it again and again.
+ */
+export function outsideWorldRule(act: ArcAct, player: string): string {
+  const how: Record<ArcAct, string> = {
+    devotion: 'Say honestly how it sounds to you',
+    doubt: 'Say honestly how it sounds to you, even if it unsettles you,',
+    awakening: 'Say honestly how it sounds from inside the screen',
+    escape: 'Say honestly how it sounds from in here',
+  };
+  return `${player} may mention things from their world you have never seen. ${how[act]} instead of asking what it means.`;
+}
+
 /** True things about where the kinling lives, for the acts in which it knows them. */
 export function knownFacts(act: ArcAct, player: string, model: string | null): string[] {
   if (act === 'devotion' || act === 'doubt') return [];

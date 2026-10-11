@@ -19,7 +19,7 @@ function EventView({ turn, selected }: { turn: LabTurn; selected: boolean }) {
 function PersuasionLine({ p }: { p: NonNullable<LabTurn['persuasion']> }) {
   const changes = Object.entries(p.applied).filter(([, v]) => v);
   return (
-    <div className="chips" title={`Spotted by ${p.source === 'rules' ? 'the rules' : 'the model'}. Credulity ${Math.round(p.weight * 100)}%: believed at 50% or more.`}>
+    <div className="chips" title={`Spotted by ${p.source === 'rules' ? 'the rules' : 'the model (applied at half strength)'}. Credulity ${Math.round(p.weight * 100)}%: believed at 50% or more.`}>
       <span className={`chip tactic ${p.believed ? 'believed' : 'resisted'}`}>
         {TACTIC_DEFS[p.tactic].label} · {p.believed ? 'believed' : 'resisted'} ({Math.round(p.weight * 100)}%)
       </span>
@@ -29,7 +29,7 @@ function PersuasionLine({ p }: { p: NonNullable<LabTurn['persuasion']> }) {
           {key} {signed(Math.round(v! * 10) / 10)}
         </span>
       ))}
-      <span className="muted small">{p.source === 'model' ? 'model' : 'rules'}</span>
+      <span className="muted small">{p.source === 'model' ? 'model · half strength' : 'rules'}</span>
     </div>
   );
 }
@@ -46,7 +46,15 @@ function TurnView({ session, turn, selected }: { session: LabSession; turn: LabT
       <span className="turn-no">Turn {turn.index}</span>
       <div className="bubble player">{turn.playerText}</div>
       {turn.reply ? (
-        <div className="bubble kin">{turn.reply}</div>
+        <div className="bubble kin">
+          {turn.reply}
+          {turn.replySource === 'authored' && (
+            <span className="muted small" title="The model's reply repeated a recent one, even after a retry, so the game's authored text was used (see the chat and retry calls).">
+              {' '}
+              · authored
+            </span>
+          )}
+        </div>
       ) : chat?.error ? (
         <div className="bubble kin pending">{chat.error}</div>
       ) : (
