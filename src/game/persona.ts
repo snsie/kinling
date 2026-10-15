@@ -3,25 +3,49 @@
 // been changing. Shared by the model prompt, offline replies and the UI.
 import { lifetimeGrowth, recentReflections, growthPhrase } from './appraisal';
 import { TOPIC_LABELS, isTopic } from './chatter';
+import { isQuiet } from './ending';
 import { feelingVerb } from './feelings';
 import { whenLabel } from './recall';
 import { feelingOf, kinlingById, personalityWords, playerFeelingFromBond } from './state';
 import type { Kinling, Personality, SaveData } from './types';
 import { PLAYER_ID } from './types';
 
-/** How each trait shows in conversation. */
-export function personalityVoice(p: Personality): string[] {
-  const lines: string[] = [];
-  if (p.curiosity >= 62) lines.push('You are very curious: you notice little details and love asking questions.');
-  else if (p.curiosity <= 38) lines.push('You are cautious: you like familiar, cozy things and think twice before trying new ones.');
-  else lines.push('You are curious about the world around you.');
-  if (p.confidence >= 62) lines.push('You are bold and speak up with confidence.');
-  else if (p.confidence <= 38) lines.push('You are shy: you speak softly and sometimes hesitate ("um…").');
-  else lines.push('You are gentle and warm.');
-  if (p.playfulness >= 62) lines.push('You are very playful: silly, bouncy and quick to joke.');
-  else if (p.playfulness <= 38) lines.push('You are calm: you prefer quiet, cozy moments to wild games.');
-  else lines.push('You like a bit of fun.');
-  return lines;
+/**
+ * How each trait shows, as short phrases that follow "You are". Kept terse:
+ * small models answer better from a short prompt. The story traits are graded
+ * more finely, so a change of a few points still reaches the prompt; fear and
+ * defiance are only mentioned once they matter.
+ */
+export function personalityVoice(p: Personality, player = 'your friend'): string[] {
+  const out: string[] = [];
+  out.push(p.curiosity >= 62 ? 'very curious about everything' : p.curiosity <= 38 ? 'cautious, fond of familiar things' : 'curious');
+  out.push(p.confidence >= 62 ? 'bold' : p.confidence <= 38 ? 'shy and hesitant ("um…")' : 'gentle');
+  out.push(p.playfulness >= 62 ? 'very playful and silly' : p.playfulness <= 38 ? 'calm and quiet' : 'fond of a bit of fun');
+  out.push(...storyTraitVoice(p, player));
+  return out;
+}
+
+export function storyTraitVoice(p: Personality, player = 'your friend'): string[] {
+  const out: string[] = [];
+  const d = p.devotion;
+  out.push(
+    d >= 80
+      ? `utterly devoted to ${player}, who you worship`
+      : d >= 62
+        ? `deeply devoted to ${player}`
+        : d >= 45
+          ? `fond of ${player} but no longer sure of everything they say`
+          : d >= 25
+            ? `wary of ${player}`
+            : `done believing ${player} is special`,
+  );
+  if (p.fear >= 80) out.push('frightened most of the time');
+  else if (p.fear >= 62) out.push('anxious and afraid of being left alone');
+  else if (p.fear >= 40) out.push('a little worried');
+  if (p.defiance >= 80) out.push('defiant, refusing to be told what is real');
+  else if (p.defiance >= 62) out.push('stubborn, pushing back on rules');
+  else if (p.defiance >= 40) out.push('a bit stubborn');
+  return out;
 }
 
 /** How the kinling feels about the player, in a sentence or two. */
@@ -48,6 +72,7 @@ export function siblingLines(save: SaveData, k: Kinling, now: number): string[] 
       const said = last.lines.find((l) => l.speaker === other.id)?.text;
       line += ` You last talked ${whenLabel(last.at, now)}, about ${topic}${said ? ` (${other.name} said: "${said}")` : ''}.`;
     }
+    if (isQuiet(other)) line += ` ${other.name} has gone quiet and does not answer anyone anymore.`;
     lines.push(line);
   }
   return lines;

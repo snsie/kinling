@@ -11,7 +11,8 @@ import { INTENTS, type Intent } from '../game/intent';
 import { sanitizeText } from '../game/social';
 import { LIMITS } from '../game/state';
 import { isTraitId } from '../game/traits';
-import type { TraitId } from '../game/types';
+import { aimedAtKinling } from '../game/persuasion';
+import { TACTICS, type Tactic, type TraitId } from '../game/types';
 import { cleanReply } from './prompts';
 
 const MAX_RAW = 4000;
@@ -117,6 +118,21 @@ export function parseCareProposal(raw: string): CareProposal | null {
 export function parseIntent(raw: string): Intent | null {
   const parsed = z.object({ intent: z.enum(INTENTS) }).safeParse(extractJson(raw));
   return parsed.success ? parsed.data.intent : null;
+}
+
+const quoteFree = (t: string) => t.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
+
+/**
+ * The tactic the model saw in `message`; null for none or unreadable output.
+ * The model must quote the words that show it; they must really be in the
+ * message and be aimed at the kinling (`name`). A label without that evidence
+ * is usually a misreading of ordinary chat.
+ */
+export function parseTactic(raw: string, message: string, name = ''): Tactic | null {
+  const parsed = z.object({ tactic: z.enum(['none', ...TACTICS]), words: z.string().max(400) }).safeParse(extractJson(raw));
+  if (!parsed.success || parsed.data.tactic === 'none') return null;
+  const words = quoteFree(parsed.data.words).replace(/^["“]+|["”.!?,]+$/g, '').trim();
+  return words.length >= 3 && quoteFree(message).includes(words) && aimedAtKinling(words, name) ? parsed.data.tactic : null;
 }
 
 /** A suggested fact, cleaned. Null when the model found none. */

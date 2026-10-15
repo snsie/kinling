@@ -1,12 +1,41 @@
 // Middle column: the trait chart, the conversation with each turn's trait
 // changes, the message box and the script runner.
 import { useEffect, useRef, useState } from 'react';
+import { TACTIC_DEFS } from '../../game/persuasion';
 import { lab, type LabState } from '../store';
 import type { LabSession, LabTurn } from '../types';
 import { PERSONALITY_KEYS, signed, TRAIT_COLORS } from './controls';
-import { TraitChart } from './TraitChart';
+import { ArcChart, TraitChart } from './TraitChart';
+
+function EventView({ turn, selected }: { turn: LabTurn; selected: boolean }) {
+  return (
+    <div className="turn event" aria-current={selected} onClick={() => lab.selectTurn(turn.id)}>
+      <span className="event-chip">{turn.event}</span>
+      {turn.reply && <div className={`bubble kin${turn.beat ? ' beat' : ''}`}>{turn.reply}</div>}
+    </div>
+  );
+}
+
+function PersuasionLine({ p }: { p: NonNullable<LabTurn['persuasion']> }) {
+  const changes = Object.entries(p.applied).filter(([, v]) => v);
+  return (
+    <div className="chips" title={`Spotted by ${p.source === 'rules' ? 'the rules' : 'the model (applied at half strength)'}. Credulity ${Math.round(p.weight * 100)}%: believed at 50% or more.`}>
+      <span className={`chip tactic ${p.believed ? 'believed' : 'resisted'}`}>
+        {TACTIC_DEFS[p.tactic].label} · {p.believed ? 'believed' : 'resisted'} ({Math.round(p.weight * 100)}%)
+      </span>
+      {changes.length === 0 && <span className="chip">no effect (repeated too often today)</span>}
+      {changes.map(([key, v]) => (
+        <span key={key} className="chip">
+          {key} {signed(Math.round(v! * 10) / 10)}
+        </span>
+      ))}
+      <span className="muted small">{p.source === 'model' ? 'model · half strength' : 'rules'}</span>
+    </div>
+  );
+}
 
 function TurnView({ session, turn, selected }: { session: LabSession; turn: LabTurn; selected: boolean }) {
+  if (turn.event) return <EventView turn={turn} selected={selected} />;
   const chat = session.calls.find((c) => c.turnId === turn.id && c.kind === 'chat');
   const steps = session.traitSteps.filter((s) => s.turnId === turn.id && !s.manual);
   const evolves = session.calls.filter((c) => c.turnId === turn.id && c.kind === 'evolve');
@@ -17,12 +46,21 @@ function TurnView({ session, turn, selected }: { session: LabSession; turn: LabT
       <span className="turn-no">Turn {turn.index}</span>
       <div className="bubble player">{turn.playerText}</div>
       {turn.reply ? (
-        <div className="bubble kin">{turn.reply}</div>
+        <div className="bubble kin">
+          {turn.reply}
+          {turn.replySource === 'authored' && (
+            <span className="muted small" title="The model's reply repeated a recent one, even after a retry, so the game's authored text was used (see the chat and retry calls).">
+              {' '}
+              · authored
+            </span>
+          )}
+        </div>
       ) : chat?.error ? (
         <div className="bubble kin pending">{chat.error}</div>
       ) : (
         <div className="bubble kin pending">{chat?.output || '…'}</div>
       )}
+      {turn.persuasion && <PersuasionLine p={turn.persuasion} />}
       {(steps.length > 0 || pendingEvolve || failedEvolve) && (
         <div className="steps">
           {steps.map((s) => {
@@ -123,6 +161,7 @@ function Composer({ state }: { state: LabState }) {
 export function ConversationPanel({ state }: { state: LabState }) {
   const s = state.session;
   const end = useRef<HTMLDivElement>(null);
+  const [chart, setChart] = useState<'story' | 'traits'>('story');
   const lastTurn = s?.turns.at(-1);
   const lastCall = s?.calls.at(-1);
   useEffect(() => {
@@ -133,7 +172,17 @@ export function ConversationPanel({ state }: { state: LabState }) {
   const selected = state.selectedTurnId ?? lastTurn?.id ?? null;
   return (
     <>
-      <TraitChart session={s} onSelectTurn={(id) => lab.selectTurn(id)} />
+      <div className="chart-switch">
+        <div className="seg" role="group" aria-label="Chart">
+          <button aria-pressed={chart === 'story'} onClick={() => setChart('story')}>
+            Story
+          </button>
+          <button aria-pressed={chart === 'traits'} onClick={() => setChart('traits')}>
+            Traits
+          </button>
+        </div>
+      </div>
+      {chart === 'story' ? <ArcChart session={s} onSelectTurn={(id) => lab.selectTurn(id)} /> : <TraitChart session={s} onSelectTurn={(id) => lab.selectTurn(id)} />}
       <div className="turns">
         {s.turns.length === 0 && <div className="empty">No messages yet. Say hello!</div>}
         {s.turns.map((t) => (

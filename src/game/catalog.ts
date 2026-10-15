@@ -11,6 +11,7 @@ import type {
   Personality,
   Preferences,
   RouteId,
+  ToyId,
   TraitId,
 } from './types';
 
@@ -82,6 +83,28 @@ export const FOODS: Record<FoodId, FoodDef> = {
   starDrop: { name: 'Star Drop', plural: 'Star Drops', description: 'A fizzy candy made from stardust.', hunger: 12, happiness: 14 },
 };
 
+export interface ToyDef {
+  name: string;
+  plural: string;
+  description: string;
+  /** What the player does with it, as a button label. */
+  verb: string;
+  happiness: number;
+  /** Energy the kinling spends playing with it. */
+  energy: number;
+  /** Where it turns up while exploring. */
+  locations: LocationId[];
+  /** Event text; {name} is the kinling. */
+  event: string;
+}
+
+export const TOYS: Record<ToyId, ToyDef> = {
+  ball: { name: 'Bouncy Ball', plural: 'Bouncy Balls', description: 'Throw it and watch them chase. It gets lost in the bushes after.', verb: 'Throw', happiness: 18, energy: 10, locations: ['garden', 'pond'], event: '{name} chased down a ball you threw.' },
+  featherWand: { name: 'Feather Wand', plural: 'Feather Wands', description: 'Wave it about and they pounce. The feathers do not last long.', verb: 'Wave', happiness: 16, energy: 7, locations: ['garden'], event: '{name} pounced at a feather wand you waved.' },
+  bubbleWand: { name: 'Bubble Wand', plural: 'Bubble Wands', description: 'Blow bubbles for them to pop. One bottle makes one game.', verb: 'Blow', happiness: 15, energy: 4, locations: ['pond'], event: '{name} popped bubbles you blew.' },
+};
+
+export const TOY_CAP = 9;
 export const FOOD_CAP = 20;
 export const MATERIAL_CAP = 99;
 
@@ -184,7 +207,7 @@ export const EGGS: Record<EggType, EggDef> = {
     id: 'woodland',
     name: 'Woodland Egg',
     description: 'Speckled like a sunlit forest floor. Hatchlings love berries and leafy places.',
-    personality: { curiosity: 55, confidence: 45, playfulness: 50 },
+    personality: { curiosity: 55, confidence: 45, playfulness: 50, devotion: 72, fear: 15, defiance: 8 },
     affinities: { woodland: 15, aquatic: 0 },
     preferences: { favoriteFood: 'dewberry', dislikedFood: 'cress', favoritePlace: 'garden' },
     preferencePool: { favoriteFood: ['dewberry', 'clover', 'cress'], dislikedFood: ['cress', 'pondPlum', 'clover'], favoritePlace: ['garden', 'garden', 'pond'] },
@@ -208,7 +231,7 @@ export const EGGS: Record<EggType, EggDef> = {
     id: 'aquatic',
     name: 'Aquatic Egg',
     description: 'Cool and glossy like a river stone. Hatchlings adore splashing and pond plums.',
-    personality: { curiosity: 50, confidence: 40, playfulness: 60 },
+    personality: { curiosity: 50, confidence: 40, playfulness: 60, devotion: 68, fear: 20, defiance: 10 },
     affinities: { woodland: 0, aquatic: 15 },
     preferences: { favoriteFood: 'pondPlum', dislikedFood: 'clover', favoritePlace: 'pond' },
     preferencePool: { favoriteFood: ['pondPlum', 'cress', 'dewberry'], dislikedFood: ['clover', 'dewberry', 'cress'], favoritePlace: ['pond', 'pond', 'garden'] },
@@ -232,7 +255,7 @@ export const EGGS: Record<EggType, EggDef> = {
     id: 'celestial',
     name: 'Celestial Egg',
     description: 'Faintly glittering, as if it fell from the night sky. Hatchlings are dreamy and bold.',
-    personality: { curiosity: 60, confidence: 50, playfulness: 45 },
+    personality: { curiosity: 60, confidence: 50, playfulness: 45, devotion: 65, fear: 12, defiance: 15 },
     affinities: { woodland: 8, aquatic: 8 },
     preferences: { favoriteFood: 'clover', dislikedFood: 'pondPlum', favoritePlace: 'garden' },
     preferencePool: { favoriteFood: ['clover', 'dewberry', 'pondPlum'], dislikedFood: ['pondPlum', 'cress', 'clover'], favoritePlace: ['garden', 'pond'] },

@@ -3,7 +3,7 @@
 // proposed the change (authored rules today, the model later).
 import { ensureDaily, kinlingById, playerFeelingFromBond, recordMemory } from './state';
 import type { Feeling, Kinling, Personality, PersonalityKey, SaveData } from './types';
-import { PERSONALITY_KEYS, PLAYER_ID } from './types';
+import { PLAYER_ID, TEMPERAMENT_KEYS } from './types';
 import { clamp } from './util';
 
 export const FEELING_FLOOR = -30;
@@ -138,7 +138,8 @@ export function applySocialOutcome(save: SaveData, outcome: SocialOutcome, now: 
   const bToA = changeFeeling(b, ba, outcome.feelings.bToA, now);
 
   // Both sway from the personalities as they were before this conversation.
-  const traits = outcome.influence?.filter((t) => PERSONALITY_KEYS.includes(t)) ?? PERSONALITY_KEYS;
+  // Siblings rub off on each other's temperament; the story traits are each kinling's own.
+  const traits = outcome.influence?.filter((t) => (TEMPERAMENT_KEYS as readonly string[]).includes(t)) ?? TEMPERAMENT_KEYS;
   const aBefore = { ...a, personality: { ...a.personality } };
   const personality: Record<string, Partial<Personality>> = {
     [a.id]: sway(a, b, ab.warmth, traits, now),

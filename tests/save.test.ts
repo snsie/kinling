@@ -71,6 +71,7 @@ describe('export and import', () => {
     delete v1.player;
     delete v1.diaryCursor;
     delete v1.claimedRuns;
+    delete (v1.inventory as Record<string, unknown>).toys;
     v1.memories = (v3.memories as Record<string, unknown>[]).map(({ pinned: _p, ...m }) => m);
     v1.settings = { ...(v3.settings as object), ai: { enabled: false, modelId: 'Qwen3-1.7B-q4f16_1-MLC' } };
     const r = parseImport(JSON.stringify(v1));
@@ -80,6 +81,7 @@ describe('export and import', () => {
       expect(r.save.player).toEqual({ name: 'Sam', facts: [] });
       expect(kin(r.save).memories.every((m) => m.pinned === false)).toBe(true);
       expect(r.save.claimedRuns).toEqual([]);
+      expect(r.save.inventory.toys.ball).toBeGreaterThan(0);
     }
   });
 });

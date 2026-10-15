@@ -16,7 +16,7 @@ import { offlineChatReply } from '../src/game/dialogue';
 import { growthLines, personalityVoice, relationshipLine, siblingLines } from '../src/game/persona';
 import { recall, whenLabel, type RecallItem } from '../src/game/recall';
 import { addChatMessage, addPlayerFact, firstPerson, forgetMemory } from '../src/game/social';
-import { feelingOf, recordMemory } from '../src/game/state';
+import { feelingOf, noInfluence, recordMemory } from '../src/game/state';
 import { PLAYER_ID, type SaveData } from '../src/game/types';
 import { chatMessages, creatureSystemPrompt, dropRepeatedTail, dropUnaskedOffer, repeatsRecent } from '../src/ai/prompts';
 import { parseAppraisal } from '../src/ai/proposals';
@@ -239,15 +239,15 @@ describe('reflection', () => {
     let s = hatchedSave();
     const k = kin(s);
     // Many strong memories at once still move a trait at most maxStep, then dailyCap per day.
-    for (let i = 0; i < 10; i++) recordMemory(k, { kind: 'player-chat', text: `brave ${i}`, tags: [], importance: 3, influence: { curiosity: 0, confidence: 2, playfulness: 0 } }, T0 + i);
+    for (let i = 0; i < 10; i++) recordMemory(k, { kind: 'player-chat', text: `brave ${i}`, tags: [], importance: 3, influence: { ...noInfluence(), confidence: 2 } }, T0 + i);
     s = reflect(s, k.id, T0 + HOUR).save;
     expect(kin(s).personality.confidence - k.baseline.confidence).toBe(REFLECTION.maxStep);
-    for (let i = 0; i < 10; i++) recordMemory(kin(s), { kind: 'player-chat', text: `more brave ${i}`, tags: [], importance: 3, influence: { curiosity: 0, confidence: 2, playfulness: 0 } }, T0 + 2 * HOUR + i);
+    for (let i = 0; i < 10; i++) recordMemory(kin(s), { kind: 'player-chat', text: `more brave ${i}`, tags: [], importance: 3, influence: { ...noInfluence(), confidence: 2 } }, T0 + 2 * HOUR + i);
     s = reflect(s, k.id, T0 + 3 * HOUR).save;
     expect(kin(s).personality.confidence - k.baseline.confidence).toBe(REFLECTION.dailyCap);
     // Day after day, it stops at the lifetime limit.
     for (let day = 1; day <= 12; day++) {
-      for (let i = 0; i < 4; i++) recordMemory(kin(s), { kind: 'player-chat', text: `day ${day} ${i}`, tags: [], importance: 3, influence: { curiosity: 0, confidence: 2, playfulness: 0 } }, T0 + day * 24 * HOUR + i);
+      for (let i = 0; i < 4; i++) recordMemory(kin(s), { kind: 'player-chat', text: `day ${day} ${i}`, tags: [], importance: 3, influence: { ...noInfluence(), confidence: 2 } }, T0 + day * 24 * HOUR + i);
       s = reflect(s, k.id, T0 + day * 24 * HOUR + HOUR).save;
     }
     expect(kin(s).personality.confidence - k.baseline.confidence).toBe(REFLECTION.driftLimit);
@@ -263,7 +263,7 @@ describe('reflection', () => {
 
 describe('persona', () => {
   it('describes how personality sounds', () => {
-    expect(personalityVoice({ curiosity: 80, confidence: 20, playfulness: 50 }).join(' ')).toMatch(/very curious.*shy.*bit of fun/);
+    expect(personalityVoice({ curiosity: 80, confidence: 20, playfulness: 50, devotion: 70, fear: 10, defiance: 10 }).join(' ')).toMatch(/very curious.*shy.*bit of fun/);
   });
 
   it('describes the relationship with the player', () => {
@@ -290,7 +290,8 @@ describe('persona', () => {
 
 describe('chat prompt', () => {
   it('brings relevant memories next to the message, with a hint for questions about the player', () => {
-    const s = chatted(['we just got a puppy named Biscuit', 'I love rainy days', 'my sister Maya turns seven next week']);
+    // Small talk first pushes the news out of the chat sent word for word, so it has to be recalled.
+    const s = chatted(['we just got a puppy named Biscuit', 'I love rainy days', 'my sister Maya turns seven next week', 'ok', 'lol', 'cool']);
     const msgs = chatMessages(s, "what's my dog's name?", T0 + HOUR);
     const last = String(msgs.at(-1)!.content);
     expect(last).toMatch(/Memories that come to mind:\n- Sam shared|Memories that come to mind:\n- Sam told me they just got a puppy named Biscuit/);
@@ -305,9 +306,15 @@ describe('chat prompt', () => {
     s = chatted(["you were so brave, I'm proud of you", 'I believe in you'], s);
     s = reflect(s, kin(s).id, T0 + HOUR).save;
     const chatty = creatureSystemPrompt(s, 'how are you feeling?', T0 + 2 * HOUR);
-    expect(chatty).toContain('Your siblings in the hollow:\n- Pip');
-    expect(chatty).toContain('How you have been changing:\n- Lately');
-    expect(chatty).toMatch(/You and Sam: /);
+    // Siblings are named; their details come in only when the message is about one.
+    expect(chatty).toMatch(/living in a hollow under an old tree with Pip\./);
+    expect(chatty).not.toMatch(/^Pip \(hatched from/m);
+    expect(creatureSystemPrompt(s, 'how is Pip doing?', T0 + 2 * HOUR)).toMatch(/^Pip \(hatched from/m);
+    expect(chatty).toContain("Lately: Lately I've been feeling braver");
+    expect(chatty).toMatch(/getting to know Sam|You like Sam|close to Sam|You adore Sam/);
+    // Appearance only when the message is about looks.
+    expect(chatty).not.toContain('You look like this');
+    expect(creatureSystemPrompt(s, 'I love your ears', T0)).toContain('You look like this');
     expect(chatty).not.toContain('Snacks: seed buns');
     expect(chatty).not.toContain('Things you could do together now');
     expect(creatureSystemPrompt(s, 'what keepsakes do you have?', T0)).toContain('Snacks: seed buns');

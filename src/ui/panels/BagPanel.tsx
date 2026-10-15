@@ -1,14 +1,15 @@
 // Inventory, keepsakes and an "about" card with traits, affinities and growth.
 import { useState } from 'react';
 import { doCare } from '../../app/actions';
-import { FOODS, KEEPSAKES, MATERIALS } from '../../game/catalog';
+import { ui } from '../../app/ui';
+import { FOODS, KEEPSAKES, MATERIALS, TOYS } from '../../game/catalog';
 import { bondForLevel, levelFor, MAX_LEVEL, nextStageAt, lifeStageFor, STAGE_LABELS } from '../../game/stage';
 import { EGG_LEVEL, eggWaiting, kinlingsBelowEggLevel } from '../../game/eggs';
 import { recentReflections } from '../../game/appraisal';
 import { describeFeelings } from '../../game/feelings';
 import { activeKinling, personalityWords } from '../../game/state';
 import type { FoodId, KeepsakeId, MaterialId, PersonalityKey, SaveData } from '../../game/types';
-import { FOOD_IDS, KEEPSAKE_IDS, MATERIAL_IDS } from '../../game/types';
+import { FOOD_IDS, KEEPSAKE_IDS, MATERIAL_IDS, TOY_IDS } from '../../game/types';
 import { ItemIcon } from '../../render/ItemIcon';
 import { Bar, formatTime } from '../common';
 import { Kinetic } from '../motion';
@@ -58,6 +59,23 @@ export function BagPanel({ save }: { save: SaveData }) {
             );
           })}
         </ul>
+      </section>
+
+      <section className="tile bag__tile bag__tile--wide" aria-labelledby="bag-toys" data-reveal="">
+        <h3 id="bag-toys">Toys</h3>
+        <ul className="inv-grid">
+          {TOY_IDS.map((t) => (
+            <li key={t} className={`inv-item ${save.inventory.toys[t] === 0 ? 'inv-item--empty' : ''}`} title={TOYS[t].description}>
+              <ItemIcon kind={t} size={36} />
+              <span className="inv-item__name">{TOYS[t].name}</span>
+              <span className="inv-item__count">×{save.inventory.toys[t]}</span>
+              <button className="btn btn--small" onClick={() => ui.setPlayTask(t)} disabled={save.inventory.toys[t] === 0} aria-label={`Play with the ${TOYS[t].name}`}>
+                {TOYS[t].verb}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <p className="hint">Each game uses a toy up. You find more while exploring.</p>
       </section>
 
       <section className="tile bag__tile bag__tile--wide" aria-labelledby="bag-mats" data-reveal="">
@@ -124,6 +142,12 @@ export function BagPanel({ save }: { save: SaveData }) {
           <Bar value={c.personality.confidence} color="var(--coral)" label="Confidence" />
           <span>Playfulness{sinceHatching('playfulness')}</span>
           <Bar value={c.personality.playfulness} color="var(--gold)" label="Playfulness" />
+          <span>Devotion{sinceHatching('devotion')}</span>
+          <Bar value={c.personality.devotion} color="var(--moss)" label="Devotion" />
+          <span>Fear{sinceHatching('fear')}</span>
+          <Bar value={c.personality.fear} color="var(--lilac)" label="Fear" />
+          <span>Defiance{sinceHatching('defiance')}</span>
+          <Bar value={c.personality.defiance} color="var(--danger)" label="Defiance" />
           <span>Woodland</span>
           <Bar value={c.affinities.woodland} color="var(--moss)" label="Woodland affinity" />
           <span>Aquatic</span>

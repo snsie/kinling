@@ -144,4 +144,23 @@ describe('care actions', () => {
     expect(out.feedback.ok).toBe(false);
     expect(kin(out.save).needs).toEqual(kin(s).needs);
   });
+
+  it('play uses up the chosen toy', () => {
+    const s = hatchedSave();
+    const balls = s.inventory.toys.ball;
+    const out = performCare(s, kin(s).id, 'play', T0, { toy: 'ball' });
+    expect(out.feedback.ok).toBe(true);
+    expect(out.save.inventory.toys.ball).toBe(balls - 1);
+    expect(kin(out.save).needs.happiness).toBeGreaterThan(kin(s).needs.happiness);
+    expect(s.inventory.toys.ball).toBe(balls);
+  });
+
+  it('play is declined without toys', () => {
+    const s = hatchedSave();
+    s.inventory.toys = { ball: 0, featherWand: 0, bubbleWand: 0 };
+    const out = performCare(s, kin(s).id, 'play', T0);
+    expect(out.feedback.ok).toBe(false);
+    expect(out.feedback.toast).toMatch(/Explore/);
+    expect(performCare({ ...s, inventory: { ...s.inventory, toys: { ...s.inventory.toys, ball: 1 } } }, kin(s).id, 'play', T0, { toy: 'bubbleWand' }).feedback.ok).toBe(false);
+  });
 });

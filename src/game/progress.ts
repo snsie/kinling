@@ -1,5 +1,6 @@
 // Post-action bookkeeping: unlock newly earned traits, detect level-ups and
 // stage-ups, and notice when a new egg arrives.
+import { advanceAct, arcOnLevelUp } from './arc';
 import { allReadyForEgg, eggWaiting } from './eggs';
 import type { Kinling, LifeStage, SaveData, TraitId } from './types';
 import { levelFor, lifeStageFor, STAGE_LABELS } from './stage';
@@ -34,6 +35,8 @@ export function refreshProgress(save: SaveData, c: Kinling, now: number, bondBef
     recordEvent(save, 'stage', `${c.name} grew into the ${STAGE_LABELS[after]} stage.`, now);
     recordMemory(c, { kind: 'milestone', text: `I grew into a ${STAGE_LABELS[after].toLowerCase()}!`, tags: ['grow', 'stage', after], importance: 3 }, now);
   }
+  if (levelUp) arcOnLevelUp(c, now);
+  advanceAct(save, c, now);
   const unlocked = newlyUnlockedTraits(save);
   if (unlocked.length) {
     save.unlocks.traits.push(...unlocked);

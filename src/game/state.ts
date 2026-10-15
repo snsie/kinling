@@ -1,5 +1,5 @@
 // Save factory and small bounded-state helpers shared by all game actions.
-import { EGGS, FOOD_CAP, FOODS, MATERIAL_CAP } from './catalog';
+import { EGGS, FOOD_CAP, FOODS, MATERIAL_CAP, TOY_CAP } from './catalog';
 import type {
   Appearance,
   CareAction,
@@ -9,7 +9,9 @@ import type {
   GameEvent,
   GameEventKind,
   Inventory,
+  ToyId,
   Kinling,
+  KinlingArc,
   KinlingDaily,
   MaterialCost,
   MaterialId,
@@ -21,7 +23,7 @@ import type {
   Settings,
   Stats,
 } from './types';
-import { FOOD_IDS, MATERIAL_IDS, PERSONALITY_KEYS, PLAYER_ID, SAVE_SCHEMA_VERSION } from './types';
+import { FOOD_IDS, MATERIAL_IDS, TOY_IDS, PERSONALITY_KEYS, PLAYER_ID, SAVE_SCHEMA_VERSION, TACTICS, type Tactic } from './types';
 import { clamp, createRng, dayKey, hashString, pick, uid } from './util';
 
 export const LIMITS = {
@@ -45,6 +47,7 @@ export const LIMITS = {
   summaryLength: 600,
   diaryLength: 600,
   nameLength: 16,
+  beats: 64,
 } as const;
 
 /** Most a personality trait can move in one day, in either direction. */
@@ -57,6 +60,7 @@ export function defaultSettings(): Settings {
     volume: 0.5,
     reducedMotion: 'system',
     relaxedMinigame: false,
+    story: { effects: true },
   };
 }
 
@@ -77,25 +81,28 @@ export function emptyStats(): Stats {
   };
 }
 
+export const STARTING_TOYS: Record<ToyId, number> = { ball: 2, featherWand: 1, bubbleWand: 1 };
+
 export function emptyInventory(): Inventory {
   const materials = Object.fromEntries(MATERIAL_IDS.map((m) => [m, 0])) as Record<MaterialId, number>;
   const foods = Object.fromEntries(FOOD_IDS.map((f) => [f, 0])) as Record<FoodId, number>;
-  return { materials, foods, keepsakes: [] };
+  const toys = Object.fromEntries(TOY_IDS.map((t) => [t, 0])) as Record<ToyId, number>;
+  return { materials, foods, toys, keepsakes: [] };
 }
 
 export function freshDaily(now: number): KinlingDaily {
   return {
     day: dayKey(now),
-    personalityDelta: { curiosity: 0, confidence: 0, playfulness: 0 },
+    personalityDelta: noInfluence(),
     chatBond: 0,
-    socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
+    socialPersonality: noInfluence(),
     feelingDelta: {},
-    reflectPersonality: { curiosity: 0, confidence: 0, playfulness: 0 },
+    reflectPersonality: noInfluence(),
   };
 }
 
 export function noInfluence(): Personality {
-  return { curiosity: 0, confidence: 0, playfulness: 0 };
+  return Object.fromEntries(PERSONALITY_KEYS.map((k) => [k, 0])) as Personality;
 }
 
 export function clampInfluence(p: Partial<Personality>): Personality {
@@ -113,6 +120,7 @@ export function createSave(now: number): SaveData {
   const inventory = emptyInventory();
   inventory.foods.dewberry = 2;
   inventory.foods.pondPlum = 1;
+  Object.assign(inventory.toys, STARTING_TOYS);
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
     saveId: uid('save'),
@@ -220,7 +228,18 @@ export function hatchKinling(save: SaveData, egg: EggType, appearance: Appearanc
     socialDaily: freshDaily(now),
     appraisedThroughId: null,
     lastReflectionAt: now,
+    arc: newArc(now),
   };
+}
+
+/** A kinling at the very start of its story. */
+export function newArc(now: number): KinlingArc {
+  return { act: 'devotion', distress: 0, awareness: 0, beats: [], lastCareAt: now, actAt: now, lastBeatAt: 0, awarenessDay: dayKey(now), awarenessToday: 0, ...newPersuasionState(), ending: null };
+}
+
+/** No promises standing and no tactics tried yet. */
+export function newPersuasionState(): Pick<KinlingArc, 'promisedAt' | 'tacticDay' | 'tacticCounts' | 'lastPersuasion'> {
+  return { promisedAt: 0, tacticDay: '', tacticCounts: Object.fromEntries(TACTICS.map((t) => [t, 0])) as Record<Tactic, number>, lastPersuasion: null };
 }
 
 export function ensureDaily(k: Kinling, now: number): void {
@@ -325,6 +344,18 @@ export function addFoods(inv: Inventory, gains: Partial<Record<FoodId, number>>)
   return actual;
 }
 
+export function addToys(inv: Inventory, gains: Partial<Record<ToyId, number>>): Partial<Record<ToyId, number>> {
+  const actual: Partial<Record<ToyId, number>> = {};
+  for (const [id, n] of Object.entries(gains) as [ToyId, number][]) {
+    if (!n || n <= 0) continue;
+    const before = inv.toys[id];
+    inv.toys[id] = Math.min(TOY_CAP, before + Math.floor(n));
+    const got = inv.toys[id] - before;
+    if (got > 0) actual[id] = got;
+  }
+  return actual;
+}
+
 export function canAfford(inv: Inventory, cost: MaterialCost): boolean {
   return (Object.entries(cost) as [MaterialId, number][]).every(([id, n]) => !n || inv.materials[id] >= n);
 }
@@ -372,5 +403,10 @@ export function personalityWords(p: Personality): string[] {
   word('curiosity', 'very curious', 'cautious', 'curious');
   word('confidence', 'bold', 'shy', 'gentle');
   word('playfulness', 'very playful', 'calm', 'playful');
+  // Story traits are only worth a word once they stand out.
+  if (p.devotion >= 62) words.push('devoted');
+  else if (p.devotion <= 30) words.push('distant');
+  if (p.fear >= 62) words.push('fearful');
+  if (p.defiance >= 62) words.push('defiant');
   return words;
 }

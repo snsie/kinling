@@ -1,12 +1,19 @@
 // {{var}} templates for the lab's custom chat prompt and the evolve prompt.
+import { ACT_LABELS } from '../game/arc';
 import { personalityVoice } from '../game/persona';
+import { actVoice, distressText, knownFacts, strangeThings } from '../game/storyVoice';
 import { activeKinling, kinlingById } from '../game/state';
-import { PERSONALITY_KEYS, type Kinling, type SaveData } from '../game/types';
+import { PERSONALITY_KEYS, type Kinling, type PersonalityKey, type SaveData } from '../game/types';
 import type { LabConfig, LabSession } from './types';
 
 export const DEFAULT_CHAT_TEMPLATE = `You are {{name}}, a small creature called a kinling who hatched from a {{egg}} egg. You live in a cozy hollow under an old tree. You are talking with {{player}}.
 Who you are: {{voice}}
 Your personality right now (0 = very low, 100 = very high): {{traitNumbers}}.
+Your world: {{actVoice}}
+{{knownFacts}}
+Strange things you have noticed:
+{{strangeThings}}
+How you feel about being looked after: {{distressText}}
 How you have been changing lately:
 {{growthNotes}}
 How to talk:
@@ -19,11 +26,42 @@ export const DEFAULT_EVOLVE_SYSTEM = `You decide how a kinling's personality shi
 - curiosity: low = cautious, likes familiar things; high = asks questions, loves new things
 - confidence: low = shy and hesitant; high = bold, speaks up
 - playfulness: low = calm and quiet; high = silly, bouncy, quick to joke
+- devotion: low = distant, trusts only itself; high = worships {{player}}, wants to please them
+- fear: low = at ease; high = frightened of being left, of the dark, of what it is
+- defiance: low = accepting, does as told; high = pushes back and tests every limit
+For each trait give a whole-number change from -{{range}} to {{range}}. Use 0 when the conversation says nothing about that trait. Most conversations move one or two traits at most. Repeating itself or missing what {{player}} said is not growth.
+Then give a reason: one short sentence in {{name}}'s own voice, starting with "I", naming what {{player}} said or did that made {{name}} feel this way.
+Answer with JSON only: {"curiosity": n, "confidence": n, "playfulness": n, "devotion": n, "fear": n, "defiance": n, "reason": "..."}`;
+
+/**
+ * Earlier defaults of the evolve system prompt. A session still using one
+ * unchanged is moved to the current default; one edited by hand is left alone.
+ * (The first describes only three traits while the schema asks for all six.)
+ */
+export const OLD_EVOLVE_SYSTEMS = [
+  `You decide how a kinling's personality shifts after talking with {{player}}.
+{{name}}'s traits run from 0 to 100:
+- curiosity: low = cautious, likes familiar things; high = asks questions, loves new things
+- confidence: low = shy and hesitant; high = bold, speaks up
+- playfulness: low = calm and quiet; high = silly, bouncy, quick to joke
 For each trait give a whole-number change from -{{range}} to {{range}}. Use 0 when the conversation says nothing about that trait. Most conversations move one trait at most.
 Then give a reason: one short sentence in {{name}}'s own voice, starting with "I", naming what {{player}} said or did that made {{name}} feel this way.
-Answer with JSON only: {"curiosity": n, "confidence": n, "playfulness": n, "reason": "..."}`;
+Answer with JSON only: {"curiosity": n, "confidence": n, "playfulness": n, "reason": "..."}`,
+  DEFAULT_EVOLVE_SYSTEM.replace(' Repeating itself or missing what {{player}} said is not growth.', ''),
+];
 
-export const DEFAULT_EVOLVE_USER = `{{name}} right now: {{traitNumbers}}.
+/** Traits an evolve template never names, so the model has no idea what they mean. */
+export function unmentionedTraits(template: string): PersonalityKey[] {
+  return PERSONALITY_KEYS.filter((key) => !new RegExp(`\\b${key}\\b`, 'i').test(template));
+}
+
+/** The current default when `template` is an unchanged earlier default; otherwise `template`. */
+export function upgradeEvolveSystem(template: string): string {
+  const t = template.replace(/\r\n/g, '\n').trim();
+  return OLD_EVOLVE_SYSTEMS.some((old) => old.trim() === t) ? DEFAULT_EVOLVE_SYSTEM : template;
+}
+
+export const DEFAULT_EVOLVE_USER =`{{name}} right now: {{traitNumbers}}.
 Recent conversation:
 {{history}}`;
 
@@ -38,6 +76,7 @@ export function defaultConfig(): LabConfig {
       frequencyPenalty: 0.3,
       maxTokens: 0,
       cleanReplies: true,
+      handleReplies: true,
       useEmbeddings: false,
     },
     evolve: {
@@ -47,13 +86,14 @@ export function defaultConfig(): LabConfig {
       systemTemplate: DEFAULT_EVOLVE_SYSTEM,
       userTemplate: DEFAULT_EVOLVE_USER,
       temperature: 0.3,
-      maxTokens: 120,
+      maxTokens: 160,
       proposalRange: 3,
       maxStep: 3,
       driftLimit: 40,
       feedbackNotes: 3,
       recordReflections: true,
     },
+    story: { rules: true, modelTactics: true, beats: true },
   };
 }
 
@@ -74,6 +114,13 @@ export const TEMPLATE_VARS: { name: string; about: string }[] = [
   { name: 'exchange', about: 'The latest exchange only' },
   { name: 'summary', about: "The game's rolling chat notes" },
   { name: 'range', about: 'Largest proposable change' },
+  { name: 'act', about: 'Story act: Devotion, Doubt, Awakening, Escape' },
+  { name: 'actVoice', about: "The game's worldview line for the act" },
+  { name: 'distress', about: 'Distress, 0–100' },
+  { name: 'awareness', about: 'Awareness, 0–100' },
+  { name: 'distressText', about: "The game's line for how distressed it is" },
+  { name: 'strangeThings', about: 'Anomalies it has noticed, one per line' },
+  { name: 'knownFacts', about: 'What it knows about where it lives (Awakening on)' },
 ];
 
 export function labKinling(session: Pick<LabSession, 'save' | 'kinlingId'>): Kinling {
@@ -107,10 +154,20 @@ export function historyText(session: Pick<LabSession, 'turns' | 'save' | 'kinlin
     .join('\n');
 }
 
-export function templateVars(session: LabSession): Record<string, string> {
+export function templateVars(session: LabSession, model: string | null = null): Record<string, string> {
   const k = labKinling(session);
   const notes = growthNotes(session, session.config.evolve.feedbackNotes);
+  const player = playerName(session.save);
+  const strange = strangeThings(k);
+  const facts = knownFacts(k.arc.act, player, model);
   return {
+    act: ACT_LABELS[k.arc.act],
+    actVoice: actVoice(k.arc.act, player),
+    distress: String(Math.round(k.arc.distress)),
+    awareness: String(Math.round(k.arc.awareness)),
+    distressText: distressText(k.arc.distress, k.arc.act, player),
+    strangeThings: strange.length ? strange.map((t) => `- ${t}`).join('\n') : '- (nothing yet)',
+    knownFacts: facts.join('\n'),
     name: k.name,
     player: playerName(session.save),
     egg: k.egg,

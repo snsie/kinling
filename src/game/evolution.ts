@@ -2,6 +2,7 @@
 // are planned against the real save, previewed, and only applied on request.
 import { COLORS } from './catalog';
 import { evolutionLine, revertLine } from './dialogue';
+import { isQuiet } from './ending';
 import type { Outcome } from './outcome';
 import { rejected } from './outcome';
 import { addBond, refreshProgress } from './progress';
@@ -205,7 +206,9 @@ export function planEvolution(save: SaveData, kinlingId: string, request: Evolut
 
 /** Apply a request. The plan is always recomputed here; a caller-supplied preview is never trusted. */
 export function applyEvolution(save: SaveData, kinlingId: string, request: EvolutionRequest, now: number): Outcome {
-  if (!kinlingById(save, kinlingId)) return rejected(save, 'There is no kinling here.');
+  const target = kinlingById(save, kinlingId);
+  if (!target) return rejected(save, 'There is no kinling here.');
+  if (isQuiet(target)) return rejected(save, `${target.name} is quiet. It doesn't stir.`);
   const plan = planEvolution(save, kinlingId, request);
   if (!plan.changed) return rejected(save, 'Nothing would change.');
   if (!plan.affordable) return rejected(save, 'Not enough materials for this change yet.');

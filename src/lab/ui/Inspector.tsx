@@ -67,11 +67,11 @@ function PromptDiff({ session, call }: { session: LabSession; call: CallRecord }
 function Parsed({ call }: { call: CallRecord }) {
   const p = call.parsed as Record<string, unknown> | undefined;
   if (!p) return null;
-  if (call.kind === 'chat' && typeof p.reply === 'string') {
+  if ((call.kind === 'chat' || call.kind === 'retry') && typeof p.reply === 'string') {
     if (p.reply === call.output.trim()) return null;
     return (
       <div>
-        <h3>Shown as the reply (after cleanup)</h3>
+        <h3>After cleanup</h3>
         <pre className="text out">{p.reply}</pre>
       </div>
     );

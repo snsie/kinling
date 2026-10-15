@@ -2,6 +2,7 @@
 // rebuilt from the save whenever it is shown. Given the same state, save,
 // time step and random source, stepRoom always produces the same result.
 import type { FurnitureId } from '../game/chatter';
+import { isQuiet } from '../game/ending';
 import { COOL, WARM } from '../game/feelings';
 import { feelingOf, kinlingById } from '../game/state';
 import type { Kinling, SaveData } from '../game/types';
@@ -151,6 +152,12 @@ export function stepRoom(state: RoomState, save: SaveData, dt: number, rand: () 
   for (const me of next.kinlings) {
     const kin = kinlingById(save, me.id);
     if (!kin || me.mode === 'talking') continue;
+    // A kinling that was let go stays where it is, still (and never idle, so no one stops to chat).
+    if (isQuiet(kin)) {
+      me.mode = 'resting';
+      me.path = [];
+      continue;
+    }
     if (me.mode === 'resting' || me.mode === 'wander') {
       me.wait -= dt;
       if (me.wait > 0) continue;

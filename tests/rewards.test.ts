@@ -88,6 +88,19 @@ describe('adventure rewards', () => {
     expect(quit.save.inventory.materials.leaf).toBe(s.inventory.materials.leaf + 8);
   });
 
+  it('finished trips turn up toys from that place; leaving early finds none', () => {
+    const s = hatchedSave();
+    const big = { leaf: 8, petal: 6, pebble: 4 };
+    const gold = resolveAdventure(s, kin(s).id, result({ runId: 'a', collected: big, hits: 0 }), T0);
+    const toys = (save: typeof s) => Object.values(save.inventory.toys).reduce((a, b) => a + b, 0);
+    expect(toys(gold.save)).toBe(toys(s) + 2);
+    expect(gold.save.inventory.toys.bubbleWand).toBe(s.inventory.toys.bubbleWand);
+    const plain = resolveAdventure(s, kin(s).id, result({ runId: 'b', collected: {}, hits: 0 }), T0);
+    expect(toys(plain.save)).toBe(toys(s) + 1);
+    const quit = resolveAdventure(s, kin(s).id, result({ runId: 'c', completed: false }), T0);
+    expect(quit.save.inventory.toys).toEqual(s.inventory.toys);
+  });
+
   it('scores and tiers are deterministic', () => {
     expect(scoreRun({ leaf: 3, dewdrop: 2 }, 1, true)).toBe(3 + 4 + 3 - 1);
     expect(tierFor(3)).toBe('none');

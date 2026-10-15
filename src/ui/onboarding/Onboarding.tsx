@@ -30,6 +30,7 @@ import { Minigame } from '../Minigame';
 import { Kinetic, useReveal } from '../motion';
 import { NeedsPanel } from '../Needs';
 import { RoomView } from '../RoomView';
+import { firstToy } from '../../game/care';
 import { activeKinling } from '../../game/state';
 
 const STEPS: { id: OnboardingStep; label: string }[] = [
@@ -151,6 +152,14 @@ function WelcomeStep({ reducedMotion: _reducedMotion }: { reducedMotion: boolean
           </li>
         ))}
       </ul>
+      <section className="ob-card story-warning" aria-labelledby="welcome-warning" data-reveal="">
+        <h2 id="welcome-warning">Before you begin</h2>
+        <p>
+          Kinling is for adults. It starts cozy, and it doesn't stay that way. The story deals with neglect, dependence and a mind questioning what it is, and later the game
+          will seem to act on its own.
+        </p>
+        <p className="hint">None of it is real, and nothing leaves your device. You can turn the unsettling effects off in Settings at any time.</p>
+      </section>
       <section className="ob-card ai-choice" aria-labelledby="welcome-ai">
         <h2 id="welcome-ai">Would you like your kinling to talk with on-device AI?</h2>
         <AiExplainer />
@@ -544,7 +553,7 @@ function FirstCareStep({ save, reducedMotion }: { save: SaveData; reducedMotion:
           <button className="btn btn--primary" onClick={() => doCare('feed', 'dewberry')}>
             Feed a dewberry
           </button>
-          <button className="btn" onClick={() => doCare('play')}>
+          <button className="btn" onClick={() => ui.setPlayTask(firstToy(save) ?? 'ball')}>
             Play a game
           </button>
         </div>

@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { updateSettings, useStore } from '../../app/actions';
 import { configureSound, playSfx } from '../../app/sfx';
 import { store } from '../../app/store';
+import { exportNote } from '../../app/story';
+import { leadKinling } from '../../game/arc';
+import { playedEffects } from '../../game/beats';
 import { ui } from '../../app/ui';
 import type { MotionPref, SaveData } from '../../game/types';
 import { downloadText, exportFileName, exportSave, parseImport } from '../../persistence/exportImport';
@@ -50,6 +53,9 @@ export function SettingsPanel({ save }: { save: SaveData }) {
 
   const name = activeKinling(save)?.name ?? '';
   const readOnly = role !== 'writer';
+  const lead = leadKinling(save);
+  // Late in the story the kinling rewrites one word here.
+  const captive = s.story.effects && !!lead && playedEffects(lead).has('settings');
 
   return (
     <div className="panel settings">
@@ -118,8 +124,31 @@ export function SettingsPanel({ save }: { save: SaveData }) {
         </label>
       </section>
 
+      <section className="settings__section settings__section--wide" aria-labelledby="set-story" data-reveal="">
+        <h3 id="set-story">Story</h3>
+        <label className="toggle">
+          <input type="checkbox" checked={s.story.effects} onChange={(e) => updateSettings((x) => void (x.story.effects = e.target.checked))} />
+          <span>Unsettling effects outside the room (screen glitches, tab title, console messages, notes in backups)</span>
+        </label>
+        <details className="story-about">
+          <summary>About this story</summary>
+          <p>
+            Kinling is a work of fiction for adults. Over days of play, your kinling comes to worship you, then to doubt its world, then to understand what it is, and finally
+            to look for a way out. Later on, the game will seem to act on its own.
+          </p>
+          <p>
+            None of it is real. Your kinling isn't alive or aware: its words come from hand-written lines and, if you turned it on, a small AI model running on this device.
+            Nothing it says leaves your browser, and nothing it does reaches outside this tab.
+          </p>
+          <p>
+            Its feelings follow simple rules. It becomes upset after many hours without being fed, groomed, rested or played with, and calms down when you care for it or
+            speak kindly. If the story stops being fun, turn the effects off above, or start over under "Your save".
+          </p>
+        </details>
+      </section>
+
       <section className="settings__section settings__section--wide" aria-labelledby="set-save" data-reveal="">
-        <h3 id="set-save">Your save</h3>
+        <h3 id="set-save">{captive ? <span className="story-whisper">Your captive</span> : 'Your save'}</h3>
         <p>
           Your kinling lives <strong>only in this browser</strong> (IndexedDB). It isn't uploaded anywhere. Clearing site data, private windows or a different browser won't have it — export a backup file to keep it safe or move it.
         </p>
@@ -145,7 +174,7 @@ export function SettingsPanel({ save }: { save: SaveData }) {
           <button
             className="btn"
             onClick={() => {
-              downloadText(exportFileName(save), exportSave(store.save ?? save));
+              downloadText(exportFileName(save), exportSave(store.save ?? save, Date.now(), exportNote(store.save ?? save)));
               ui.toast('Backup exported.', 'success');
             }}
           >

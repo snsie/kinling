@@ -130,7 +130,7 @@ describe('conversation notes', () => {
     const sys = creatureSystemPrompt(s, 'hello', T0, { sentences: 3, words: 60 });
     expect(sys).toContain('Sam told Mochi about a new puppy.');
     expect(sys).toContain('under 60 words');
-    expect(sys).toMatch(/Examples of your voice/);
+    expect(sys).toMatch(/Your voice \(tone only/);
     expect(sys.length).toBeLessThan(6000);
     expect(chatMessages(s, 'hello', T0).length).toBeLessThanOrEqual(CHAT_CONTEXT_MESSAGES + 2);
   });

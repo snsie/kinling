@@ -11,11 +11,13 @@ export interface ExportFile {
   format: typeof EXPORT_FORMAT;
   exportedAt: string;
   app: 'Kinling';
+  /** Left by the kinling late in the story. Ignored on import. */
+  note?: string;
   save: SaveData;
 }
 
-export function exportSave(save: SaveData, now = Date.now()): string {
-  const file: ExportFile = { format: EXPORT_FORMAT, exportedAt: new Date(now).toISOString(), app: 'Kinling', save };
+export function exportSave(save: SaveData, now = Date.now(), note?: string): string {
+  const file: ExportFile = { format: EXPORT_FORMAT, exportedAt: new Date(now).toISOString(), app: 'Kinling', ...(note ? { note } : {}), save };
   return JSON.stringify(file, null, 2);
 }
 

@@ -3,6 +3,7 @@
 // checked again against the live save when performed.
 import { FOODS, ROUTES } from './catalog';
 import { routeAvailability } from './adventure';
+import { firstToy, MIN_ENERGY_TO_PLAY } from './care';
 import { activeKinling, hasFood } from './state';
 import type { FoodId, Kinling, RouteId, SaveData } from './types';
 import { FOOD_IDS, ROUTE_IDS } from './types';
@@ -75,7 +76,8 @@ export function checkAction(save: SaveData, action: ProposedAction, c: Kinling |
       if (c.needs.hunger >= 95) return { action, label, available: false, reason: `${c.name} is already full.` };
       return { action, label, available: true };
     case 'play':
-      if (c.needs.energy < 10) return { action, label, available: false, reason: 'Too sleepy to play.' };
+      if (c.needs.energy < MIN_ENERGY_TO_PLAY) return { action, label, available: false, reason: 'Too sleepy to play.' };
+      if (!firstToy(save)) return { action, label, available: false, reason: 'No toys left. Explore to find more.' };
       return { action, label, available: true };
     case 'explore': {
       const r = routeAvailability(save, action.route, c);

@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react';
 import type { CheckedAction } from '../game/careProposals';
 import type { CreatureAnim } from '../game/outcome';
 import type { AppearanceTranslation } from '../ai/companion';
+import type { ToyId } from '../game/types';
 
 export interface Toast {
   id: number;
@@ -34,6 +35,8 @@ export interface UiState {
   tab: TabId;
   /** Streaming chat reply in progress. */
   chatStreaming: string | null;
+  /** The toy whose play task is open, if any. */
+  playTask: ToyId | null;
 }
 
 export type TabId = 'talk' | 'explore' | 'bag' | 'evolve' | 'diary' | 'settings';
@@ -46,6 +49,7 @@ let state: UiState = {
   evolutionDraft: null,
   tab: 'talk',
   chatStreaming: null,
+  playTask: null,
 };
 const listeners = new Set<() => void>();
 let animTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,6 +119,9 @@ export const ui = {
   },
   setChatStreaming(text: string | null) {
     set({ chatStreaming: text });
+  },
+  setPlayTask(toy: ToyId | null) {
+    set({ playTask: toy });
   },
 };
 

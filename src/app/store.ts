@@ -43,6 +43,8 @@ export class GameStore {
   private writing: Promise<void> | null = null;
   private lastTickSave = 0;
   private initialized = false;
+  /** How long the player had been away when they last arrived (page load or return to the tab). */
+  private arrivalGap = 0;
 
   subscribe = (l: Listener) => {
     this.listeners.add(l);
@@ -121,6 +123,7 @@ export class GameStore {
 
     let lastTick: Feedback | null = null;
     if (role === 'writer') {
+      this.arrivalGap = Math.max(0, now - save.lastTickAt);
       const t = advanceTime(save, now);
       save = t.save;
       if (t.absentMs > 0) lastTick = t.feedback;
@@ -154,6 +157,7 @@ export class GameStore {
     if (!current || !this.canWrite) return null;
     const t = advanceTime(current, now);
     if (t.save === current) return null;
+    if (t.absentMs > 0) this.arrivalGap = t.absentMs;
     this.patch({ save: t.save, lastTick: t.absentMs > 0 ? t.feedback : this.snapshot.lastTick });
     if (t.absentMs > 0 || now - this.lastTickSave > TICK_SAVE_INTERVAL) {
       this.lastTickSave = now;
@@ -164,6 +168,13 @@ export class GameStore {
 
   clearNotice() {
     this.patch({ notice: null });
+  }
+
+  /** Milliseconds away before the latest arrival; reads once. */
+  consumeArrivalGap(): number {
+    const gap = this.arrivalGap;
+    this.arrivalGap = 0;
+    return gap;
   }
 
   consumeLastTick(): Feedback | null {

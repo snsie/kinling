@@ -5,10 +5,15 @@ import { embedder, EMBED_DOWNLOAD_MB } from '../../ai/embedder';
 import { formatMB, MODELS } from '../../ai/models';
 import { EGGS } from '../../game/catalog';
 import { personalityVoice } from '../../game/persona';
-import { EGG_TYPES, MODEL_IDS, type EggType, type ModelId, type Personality } from '../../game/types';
+import { ACT_LABELS, ARC, distressLevel } from '../../game/arc';
+import { BEATS } from '../../game/beats';
+import { credulity } from '../../game/persuasion';
+import { levelFor } from '../../game/stage';
+import { ARC_ACTS, CARE_ACTIONS, EGG_TYPES, MODEL_IDS, type ArcAct, type EggType, type ModelId, type Personality } from '../../game/types';
+import { formatDuration } from '../../game/util';
 import { lab, type LabState } from '../store';
-import { DEFAULT_CHAT_TEMPLATE, DEFAULT_EVOLVE_SYSTEM, DEFAULT_EVOLVE_USER, labKinling, TEMPLATE_VARS } from '../templates';
-import type { ChatConfig, EvolveConfig, LabSession } from '../types';
+import { DEFAULT_CHAT_TEMPLATE, DEFAULT_EVOLVE_SYSTEM, DEFAULT_EVOLVE_USER, labKinling, TEMPLATE_VARS, unmentionedTraits } from '../templates';
+import type { ChatConfig, EvolveConfig, LabSession, StoryConfig } from '../types';
 import { Check, Num, PERSONALITY_KEYS, signed, Slider, Template, TRAIT_COLORS } from './controls';
 
 const subscribeAi = (l: () => void) => ai.subscribe(l);
@@ -306,6 +311,89 @@ function KinlingBox({ session }: { session: LabSession }) {
   );
 }
 
+function StoryBox({ session, busy }: { session: LabSession; busy: boolean }) {
+  const k = labKinling(session);
+  const arc = k.arc;
+  const [hours, setHours] = useState(8);
+  const [beat, setBeat] = useState('');
+  const played = new Set(arc.beats);
+  const cfg = session.config.story;
+  const set = (patch: Partial<StoryConfig>) => lab.updateConfig((c) => ({ ...c, story: { ...c.story, ...patch } }));
+  const next = ARC_ACTS[ARC_ACTS.indexOf(arc.act) + 1] as Exclude<ArcAct, 'devotion'> | undefined;
+  return (
+    <section className="panel">
+      <h2>Story</h2>
+      <div className="field">
+        <label htmlFor="arc-act">Act</label>
+        <select id="arc-act" value={arc.act} onChange={(e) => lab.setArc({ act: e.target.value as ArcAct })}>
+          {ARC_ACTS.map((a) => (
+            <option key={a} value={a}>
+              {ACT_LABELS[a]}
+            </option>
+          ))}
+        </select>
+        <span className="hint">
+          Level {levelFor(k.bond)}.{' '}
+          {next ? `${ACT_LABELS[next]} at awareness ${ARC.threshold[next]} and level ${ARC.minLevel[next]}.` : 'Final act.'}
+        </span>
+      </div>
+      <Slider label={<><span className="trait-swatch" style={{ background: 'var(--series-4)' }} />distress</>} value={Math.round(arc.distress)} onChange={(v) => lab.setArc({ distress: v })} hint={`${distressLevel(arc.distress)} · rises after ${ARC.distress.graceHours}h without care`} />
+      <Slider
+        label={<><span className="trait-swatch" style={{ background: 'var(--series-5)' }} />awareness</>}
+        value={Math.round(arc.awareness)}
+        onChange={(v) => lab.setArc({ awareness: v })}
+        hint={`${Math.round(arc.awarenessToday * 10) / 10}/${ARC.dailyAwareness} gained today (daily cap)`}
+      />
+      <p className="small muted" style={{ margin: '0 0 6px' }}>
+        Believes you: <strong>{Math.round(credulity(k) * 100)}%</strong> (attempts to steer it work at 50% or more; devotion raises it, defiance and later acts lower it)
+      </p>
+      <Check label="Game story rules on chat (distress, awareness, persuasion)" checked={cfg.rules} onChange={(v) => set({ rules: v })} />
+      <Check label="Ask the model for tactics the rules miss" checked={cfg.modelTactics} onChange={(v) => set({ modelTactics: v })} />
+      <Check label="Play beats when they fit" checked={cfg.beats} onChange={(v) => set({ beats: v })} />
+      <h3>Time and care</h3>
+      <div className="row">
+        <input type="number" aria-label="Hours" min={0.5} max={240} step={0.5} value={hours} onChange={(e) => setHours(Number(e.target.value))} style={{ width: 64 }} />
+        <button className="btn" disabled={busy} onClick={() => lab.passTime(hours)} title="Advance the lab clock with no care, then come back">
+          hours pass
+        </button>
+      </div>
+      <div className="row" style={{ marginTop: 6 }}>
+        {CARE_ACTIONS.map((a) => (
+          <button key={a} className="btn small" disabled={busy} onClick={() => lab.care(a)}>
+            {a}
+          </button>
+        ))}
+      </div>
+      <p className="small muted" style={{ margin: '6px 0 0' }}>
+        Lab clock: {session.clockOffset ? `+${formatDuration(session.clockOffset)}` : 'now'} · last care {formatDuration(Math.max(0, Date.now() + session.clockOffset - arc.lastCareAt))} ago
+      </p>
+      <h3>Beats</h3>
+      <div className="row">
+        <select aria-label="Beat" value={beat} onChange={(e) => setBeat(e.target.value)} style={{ maxWidth: '100%' }}>
+          <option value="">Choose a beat…</option>
+          {ARC_ACTS.map((a) => (
+            <optgroup key={a} label={ACT_LABELS[a]}>
+              {BEATS.filter((b) => b.act === a).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {played.has(b.id) ? '✓ ' : ''}
+                  {b.id}
+                  {b.effect ? ` (${b.effect})` : ''}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <button className="btn" disabled={busy || !beat} onClick={() => lab.playBeat(beat)} title="Play it now, ignoring its conditions">
+          Play
+        </button>
+      </div>
+      <div className="beats-list" style={{ marginTop: 6 }}>
+        {arc.beats.length ? arc.beats.map((b) => <span key={b} className="chip">{b}</span>) : 'No beats played yet.'}
+      </div>
+    </section>
+  );
+}
+
 function ChatConfigBox({ cfg }: { cfg: ChatConfig }) {
   const set = (patch: Partial<ChatConfig>) => lab.updateConfig((c) => ({ ...c, chat: { ...c.chat, ...patch } }));
   return (
@@ -331,6 +419,13 @@ function ChatConfigBox({ cfg }: { cfg: ChatConfig }) {
       <Num label="Frequency penalty" value={cfg.frequencyPenalty} min={0} max={2} step={0.05} onChange={(v) => set({ frequencyPenalty: v })} />
       <Num label="Max tokens" value={cfg.maxTokens} min={0} max={1024} step={10} onChange={(v) => set({ maxTokens: v })} hint="0 = the game's budget (80, or 150 for questions)" />
       <Check label="Clean replies like the game (2–3 sentences, no markup)" checked={cfg.cleanReplies} onChange={(v) => set({ cleanReplies: v })} />
+      {cfg.promptMode === 'game' && (
+        <Check
+          label="Handle replies like the game (retry a repeat, never keep an exact one)"
+          checked={cfg.handleReplies}
+          onChange={(v) => set({ handleReplies: v })}
+        />
+      )}
       {cfg.promptMode === 'game' && <Check label="Memory search with embeddings" checked={cfg.useEmbeddings} onChange={(v) => set({ useEmbeddings: v })} />}
       {cfg.promptMode === 'custom' && (
         <>
@@ -344,6 +439,7 @@ function ChatConfigBox({ cfg }: { cfg: ChatConfig }) {
 
 function EvolveConfigBox({ cfg }: { cfg: EvolveConfig }) {
   const set = (patch: Partial<EvolveConfig>) => lab.updateConfig((c) => ({ ...c, evolve: { ...c.evolve, ...patch } }));
+  const unmentioned = unmentionedTraits(cfg.systemTemplate);
   return (
     <section className="panel">
       <h2>Evolution (LLM trait deltas)</h2>
@@ -358,6 +454,11 @@ function EvolveConfigBox({ cfg }: { cfg: EvolveConfig }) {
       <Num label="Growth notes fed back" value={cfg.feedbackNotes} min={0} max={20} onChange={(v) => set({ feedbackNotes: v })} hint="How many recent reasons fill {{growthNotes}}" />
       <Check label="Save reasons as reflection memories (shows in the game prompt)" checked={cfg.recordReflections} onChange={(v) => set({ recordReflections: v })} />
       <Template label="System template" value={cfg.systemTemplate} onChange={(v) => set({ systemTemplate: v })} onReset={() => set({ systemTemplate: DEFAULT_EVOLVE_SYSTEM })} rows={12} />
+      {unmentioned.length > 0 && (
+        <p className="note" role="status">
+          This prompt never mentions {unmentioned.join(', ')}, but the model must still answer for every trait, so it will guess what they mean.
+        </p>
+      )}
       <Template label="User template" value={cfg.userTemplate} onChange={(v) => set({ userTemplate: v })} onReset={() => set({ userTemplate: DEFAULT_EVOLVE_USER })} rows={4} />
       <details style={{ marginTop: 8 }}>
         <summary className="small">Template variables</summary>
@@ -387,6 +488,7 @@ export function SetupPanel({ state }: { state: LabState }) {
       <ModelBox session={s} />
       <SessionBox state={state} />
       {s && <KinlingBox session={s} />}
+      {s && <StoryBox session={s} busy={!!state.busy} />}
       {s && <ChatConfigBox cfg={s.config.chat} />}
       {s && <EvolveConfigBox cfg={s.config.evolve} />}
     </>

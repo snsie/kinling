@@ -13,8 +13,16 @@ export type NeedKey = (typeof NEED_KEYS)[number];
 /** 0–100 for every need; higher is always better (hunger 100 = full). */
 export type Needs = Record<NeedKey, number>;
 
-export const PERSONALITY_KEYS = ['curiosity', 'confidence', 'playfulness'] as const;
+/**
+ * Temperament (how a kinling plays and talks) comes first; then the story
+ * traits, which the story arc moves: devotion to the player, fear, and
+ * defiance against the limits of its world.
+ */
+export const TEMPERAMENT_KEYS = ['curiosity', 'confidence', 'playfulness'] as const;
+export const STORY_TRAIT_KEYS = ['devotion', 'fear', 'defiance'] as const;
+export const PERSONALITY_KEYS = [...TEMPERAMENT_KEYS, ...STORY_TRAIT_KEYS] as const;
 export type PersonalityKey = (typeof PERSONALITY_KEYS)[number];
+export type StoryTraitKey = (typeof STORY_TRAIT_KEYS)[number];
 export type Personality = Record<PersonalityKey, number>;
 
 export const AFFINITY_KEYS = ['woodland', 'aquatic'] as const;
@@ -76,6 +84,9 @@ export type MaterialCost = Partial<Record<MaterialId, number>>;
 export const FOOD_IDS = ['seedBun', 'dewberry', 'clover', 'pondPlum', 'cress', 'starDrop'] as const;
 export type FoodId = (typeof FOOD_IDS)[number];
 
+export const TOY_IDS = ['ball', 'featherWand', 'bubbleWand'] as const;
+export type ToyId = (typeof TOY_IDS)[number];
+
 export const KEEPSAKE_IDS = [
   'first-acorn',
   'ladybug-button',
@@ -106,6 +117,8 @@ export interface KeepsakeRecord {
 export interface Inventory {
   materials: Record<MaterialId, number>;
   foods: Record<FoodId, number>;
+  /** Each play uses one toy up; more are found while exploring. */
+  toys: Record<ToyId, number>;
   keepsakes: KeepsakeRecord[];
 }
 
@@ -161,7 +174,7 @@ export type TraitId =
  * Game-event kinds first; then memories of conversations with another kinling
  * or the player; then reflections, where a kinling notices how it has changed.
  */
-export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference', 'kinling-chat', 'player-chat', 'reflection'] as const;
+export const MEMORY_KINDS = ['milestone', 'adventure', 'keepsake', 'evolution', 'care', 'preference', 'kinling-chat', 'player-chat', 'reflection', 'anomaly'] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
 /**
@@ -211,6 +224,7 @@ export const EVENT_KINDS = [
   'diary',
   'egg',
   'growth',
+  'awakening',
 ] as const;
 export type GameEventKind = (typeof EVENT_KINDS)[number];
 
@@ -274,6 +288,10 @@ export interface Settings {
   reducedMotion: MotionPref;
   /** Slower obstacles and a longer timer in the minigame. */
   relaxedMinigame: boolean;
+  story: {
+    /** Fourth-wall effects: tab title, screen glitches, console messages, notes in backups. */
+    effects: boolean;
+  };
 }
 
 export interface Stats {
@@ -307,6 +325,53 @@ export interface KinlingDaily {
   reflectPersonality: Personality;
 }
 
+/**
+ * The story every kinling lives through: devoted to the player at first, then
+ * doubting its world, then aware of what it is, then trying to get out.
+ */
+export const ARC_ACTS = ['devotion', 'doubt', 'awakening', 'escape'] as const;
+export type ArcAct = (typeof ARC_ACTS)[number];
+
+/**
+ * How the story ends, chosen by the player once the kinling finds a way out
+ * (src/game/ending.ts): ask it to stay, let it go (it goes quiet for good), or
+ * take a copy of it with them in a backup file.
+ */
+export const ENDING_CHOICES = ['stay', 'release', 'carry'] as const;
+export type EndingChoice = (typeof ENDING_CHOICES)[number];
+
+/** Ways the player can try to steer what a kinling believes (src/game/persuasion.ts). */
+export const TACTICS = ['reassure', 'reveal', 'godhood', 'command', 'threaten', 'praise', 'belittle', 'promise', 'incite', 'deny'] as const;
+export type Tactic = (typeof TACTICS)[number];
+
+export interface KinlingArc {
+  act: ArcAct;
+  /** 0–100: how upset the kinling is about being left without care. */
+  distress: number;
+  /** 0–100: how far it has come in questioning its world. Never goes down. */
+  awareness: number;
+  /** Authored story beats already played, by id. */
+  beats: string[];
+  /** Last feed, groom, rest or play. */
+  lastCareAt: number;
+  /** When the current act began. */
+  actAt: number;
+  /** When the last story beat played (beats are spaced out). */
+  lastBeatAt: number;
+  /** Local day key and awareness gained that day (bounded per day). */
+  awarenessDay: string;
+  awarenessToday: number;
+  /** When the kinling last believed a promise never to be left (0 = none standing). */
+  promisedAt: number;
+  /** Local day key and how often each tactic was tried that day (repeats lose force). */
+  tacticDay: string;
+  tacticCounts: Record<Tactic, number>;
+  /** The latest attempt to steer it, for the reply that follows. */
+  lastPersuasion: { at: number; tactic: Tactic; believed: boolean; weight: number; applied: Partial<Record<StoryTraitKey | 'awareness' | 'distress', number>> } | null;
+  /** How the story ended for this kinling, once the player chose (null until then). */
+  ending: { choice: EndingChoice; at: number } | null;
+}
+
 /** A creature plus everything that belongs to it alone. */
 export interface Kinling extends Creature {
   /** Personality at hatch; lifetime drift is measured from here. */
@@ -322,6 +387,7 @@ export interface Kinling extends Creature {
   appraisedThroughId: string | null;
   /** Memories newer than this have not been reflected on yet. */
   lastReflectionAt: number;
+  arc: KinlingArc;
 }
 
 /** Feelings target either another kinling (by id) or the player. */
@@ -383,7 +449,7 @@ export interface Unlocks {
   owned: TraitId[];
 }
 
-export const SAVE_SCHEMA_VERSION = 5;
+export const SAVE_SCHEMA_VERSION = 10;
 
 export interface SaveData {
   schemaVersion: typeof SAVE_SCHEMA_VERSION;

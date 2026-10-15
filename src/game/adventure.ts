@@ -1,15 +1,16 @@
 // Turning a finished minigame run into rewards. All reward logic lives here:
 // results are re-validated, bounded and can only be claimed once.
-import { FOODS, KEEPSAKES, LOCATION_NAMES, MATERIALS, ROUTE_KEEPSAKES, ROUTES } from './catalog';
+import { FOODS, KEEPSAKES, LOCATION_NAMES, MATERIALS, ROUTE_KEEPSAKES, ROUTES, TOYS } from './catalog';
 import { adventureLine } from './dialogue';
+import { isQuiet } from './ending';
 import { clampNeeds } from './needs';
 import type { Outcome, RewardSummary } from './outcome';
 import { rejected } from './outcome';
 import { addBond, refreshProgress } from './progress';
-import { activeKinling, addAffinity, addFoods, addMaterials, draft, ensureDaily, kinlingById, LIMITS, nudgePersonality, recordEvent, recordMemory } from './state';
+import { activeKinling, addAffinity, addFoods, addMaterials, addToys, draft, ensureDaily, kinlingById, LIMITS, nudgePersonality, recordEvent, recordMemory } from './state';
 import { isWearing } from './traits';
-import type { FoodId, KeepsakeId, Kinling, MaterialCost, MaterialId, RouteId, SaveData } from './types';
-import { FOOD_IDS, MATERIAL_IDS, ROUTE_IDS } from './types';
+import type { FoodId, KeepsakeId, Kinling, MaterialCost, MaterialId, RouteId, SaveData, ToyId } from './types';
+import { FOOD_IDS, MATERIAL_IDS, ROUTE_IDS, TOY_IDS } from './types';
 import { createRng, pick } from './util';
 import type { CollectibleKind } from '../minigame/arenas';
 import { COLLECTIBLE_KINDS, routeCollectibles } from '../minigame/arenas';
@@ -65,6 +66,7 @@ export interface RouteAvailability {
 
 export function routeAvailability(save: SaveData, route: RouteId, c: Kinling | null = activeKinling(save)): RouteAvailability {
   if (!c) return { route, available: false, reason: 'Hatch your kinling first.' };
+  if (isQuiet(c)) return { route, available: false, reason: `${c.name} is quiet. It doesn't stir.` };
   const def = ROUTES[route];
   if (def.requiresTrait && !isWearing(c.appearance, def.requiresTrait)) {
     return { route, available: false, reason: `Needs a paddle tail to swim here.` };
@@ -162,6 +164,16 @@ export function resolveAdventure(save: SaveData, kinlingId: string, rawResult: M
     materialGains.stardust = (materialGains.stardust ?? 0) + 1;
   }
 
+  // Toys: a finished trip always turns one up, a golden one turns up two.
+  const toyGains: Partial<Record<ToyId, number>> = {};
+  if (result.completed) {
+    const toyPool = TOY_IDS.filter((t) => TOYS[t].locations.includes(route.location));
+    for (let i = 0; i < (tier === 'gold' ? 2 : 1); i++) {
+      const t = pick(toyPool, rand);
+      toyGains[t] = (toyGains[t] ?? 0) + 1;
+    }
+  }
+
   // Keepsakes: tutorial acorn, golden finds, and a rare starlit feather.
   const keepsakes: KeepsakeId[] = [];
   const owned = (id: KeepsakeId) => s.inventory.keepsakes.some((k) => k.id === id) || keepsakes.includes(id);
@@ -176,6 +188,7 @@ export function resolveAdventure(save: SaveData, kinlingId: string, rawResult: M
 
   const gotMaterials = addMaterials(s.inventory, materialGains);
   const gotFoods = addFoods(s.inventory, foodGains);
+  const gotToys = addToys(s.inventory, toyGains);
   for (const id of keepsakes) s.inventory.keepsakes.push({ id, foundAt: now, location: route.location });
 
   // Needs: adventures are tiring but fun.
@@ -212,7 +225,7 @@ export function resolveAdventure(save: SaveData, kinlingId: string, rawResult: M
   if (s.claimedRuns.length > LIMITS.claimedRuns) s.claimedRuns.splice(0, s.claimedRuns.length - LIMITS.claimedRuns);
 
   // Events and memories come from what actually happened.
-  const found = describeGains(gotMaterials, gotFoods);
+  const found = describeGains(gotMaterials, gotFoods, gotToys);
   const desc = `${c.name} explored the ${route.name}${found ? ` and gathered ${found}` : ''}${keepsakes.length ? `, finding ${keepsakes.map((k) => `a ${KEEPSAKES[k].name}`).join(' and ')}` : ''}.`;
   recordEvent(s, 'adventure', desc, now);
   if (firstVisit) {
@@ -234,6 +247,7 @@ export function resolveAdventure(save: SaveData, kinlingId: string, rawResult: M
   const rewards: RewardSummary = {
     materials: gotMaterials,
     foods: gotFoods,
+    toys: gotToys,
     keepsakes,
     tier,
     score,
@@ -254,13 +268,16 @@ export function resolveAdventure(save: SaveData, kinlingId: string, rawResult: M
   };
 }
 
-export function describeGains(materials: MaterialCost, foods: Partial<Record<FoodId, number>>): string {
+export function describeGains(materials: MaterialCost, foods: Partial<Record<FoodId, number>>, toys: Partial<Record<ToyId, number>> = {}): string {
   const parts: string[] = [];
   for (const [id, n] of Object.entries(materials) as [MaterialId, number][]) {
     if (n) parts.push(`${n} ${n === 1 ? MATERIALS[id].name.toLowerCase() : MATERIALS[id].plural.toLowerCase()}`);
   }
   for (const [id, n] of Object.entries(foods) as [FoodId, number][]) {
     if (n) parts.push(`${n} ${(n === 1 ? FOODS[id].name : FOODS[id].plural).toLowerCase()}`);
+  }
+  for (const [id, n] of Object.entries(toys) as [ToyId, number][]) {
+    if (n) parts.push(`${n} ${(n === 1 ? TOYS[id].name : TOYS[id].plural).toLowerCase()}`);
   }
   if (parts.length <= 1) return parts.join('');
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;

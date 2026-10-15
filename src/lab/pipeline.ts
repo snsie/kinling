@@ -3,13 +3,18 @@
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import { recallVectors } from '../ai/companion';
 import { ai, AiInterruptedError, completionBody, type CompletionRequest } from '../ai/engine';
-import { cleanReply, dropUnaskedOffer } from '../ai/prompts';
+import { cleanReply, dropUnaskedOffer, TACTIC_MAX_TOKENS, tacticMessages, tacticSchema } from '../ai/prompts';
+import { parseTactic } from '../ai/proposals';
+import { handledReply } from '../ai/reply';
+import { advanceAct } from '../game/arc';
+import { MODEL_TACTIC_STRENGTH, persuade, ruleTactic } from '../game/persuasion';
 import { addChatMessage } from '../game/social';
 import { draft, kinlingById, recordMemory } from '../game/state';
 import { PERSONALITY_KEYS, type Personality } from '../game/types';
 import { uid } from '../game/util';
 import { buildChatPrompt, buildEvolvePrompt } from './build';
 import { applyDeltas, parseTraitProposal } from './evolve';
+import { afterChatTurn, catchUp, labNow } from './story';
 import { labKinling } from './templates';
 import type { CallKind, CallRecord, LabSession, RequestBody, TraitStep } from './types';
 
@@ -63,9 +68,10 @@ async function loggedComplete(api: LabStoreApi, meta: { turnId: string | null; k
 export async function runTurn(api: LabStoreApi, playerText: string): Promise<void> {
   const text = playerText.trim();
   if (!text) return;
-  const s0 = api.get();
+  const start = api.get();
+  const now = labNow(start);
+  const s0 = { ...start, save: catchUp(start.save, now) };
   const cfg = s0.config.chat;
-  const now = Date.now();
   const turnId = uid('turn');
   const index = s0.turns.length + 1;
 
@@ -74,28 +80,61 @@ export async function runTurn(api: LabStoreApi, playerText: string): Promise<voi
     const withMessage = addChatMessage({ ...s0.save, activeKinlingId: s0.kinlingId }, s0.kinlingId, 'player', text, 'player', now);
     vectors = await recallVectors(withMessage, text).catch(() => null);
   }
-  const prompt = buildChatPrompt(s0, text, now, vectors);
-  api.update((s) => ({ ...s, save: prompt.save, turns: [...s.turns, { id: turnId, index, at: now, playerText: text, reply: '', callIds: [] }] }));
+  const status = ai.getStatus();
+  const prompt = buildChatPrompt(s0, text, now, vectors, 'modelId' in status ? status.modelId : null);
+  // The rules may have spotted an attempt to steer the kinling (it shapes this very reply).
+  const steered = labKinling({ save: prompt.save, kinlingId: s0.kinlingId }).arc.lastPersuasion;
+  const persuasion = steered && steered.at === now ? { ...steered, source: 'rules' as const } : undefined;
+  api.update((s) => ({ ...s, save: prompt.save, turns: [...s.turns, { id: turnId, index, at: now, playerText: text, reply: '', callIds: [], ...(persuasion ? { persuasion } : {}) }] }));
 
-  const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'chat' }, {
-    messages: prompt.messages,
-    maxTokens: cfg.maxTokens || prompt.budget.maxTokens,
-    temperature: cfg.temperature,
-    topP: cfg.topP,
-    frequencyPenalty: cfg.frequencyPenalty,
-    timeoutMs: 90_000,
-  });
-  const reply = cfg.cleanReplies ? dropUnaskedOffer(cleanReply(raw, prompt.budget.sentences, prompt.budget.maxChars), text) : raw.trim();
-  patchCall(api, id, { parsed: { reply } });
+  const clean = (raw: string) => (cfg.cleanReplies ? dropUnaskedOffer(cleanReply(raw, prompt.budget.sentences, prompt.budget.maxChars), text) : raw.trim());
+  // Each attempt is its own call in the inspector; a retry is logged as 'retry'.
+  const generate = async (messages: ChatCompletionMessageParam[], temperature: number, retry: boolean) => {
+    const call = await loggedComplete(api, { turnId, kind: retry ? 'retry' : 'chat' }, {
+      messages,
+      maxTokens: cfg.maxTokens || prompt.budget.maxTokens,
+      temperature,
+      topP: cfg.topP,
+      frequencyPenalty: cfg.frequencyPenalty,
+      timeoutMs: 90_000,
+    });
+    patchCall(api, call.id, { parsed: { reply: clean(call.text) } });
+    return call.text;
+  };
+  const result =
+    cfg.promptMode === 'game' && cfg.handleReplies
+      ? await handledReply(prompt.save, text, now, { budget: prompt.budget, vectors, temperature: cfg.temperature, clean, generate })
+      : { text: clean(await generate(prompt.messages, cfg.temperature, false)), source: 'ai' as const };
+  const reply = result.text || '…';
   api.update((s) => ({
     ...s,
     updatedAt: Date.now(),
-    save: addChatMessage(s.save, s.kinlingId, 'creature', reply || '…', 'ai', Date.now()),
-    turns: s.turns.map((t) => (t.id === turnId ? { ...t, reply: reply || '…' } : t)),
+    save: addChatMessage(s.save, s.kinlingId, 'creature', reply, result.source, labNow(s)),
+    turns: s.turns.map((t) => (t.id === turnId ? { ...t, reply, replySource: result.source } : t)),
   }));
 
+  const story = api.get().config.story;
+  if (story.rules && story.modelTactics && !persuasion && !ruleTactic(text)) await modelTactic(api, turnId, text);
+  afterChatTurn(api, text);
   const evolve = api.get().config.evolve;
   if (evolve.enabled && index % Math.max(1, evolve.every) === 0) await evolveNow(api);
+}
+
+/** As the game does after a reply: let the model name a tactic the rules missed, and apply it. */
+async function modelTactic(api: LabStoreApi, turnId: string, text: string): Promise<void> {
+  const s = api.get();
+  const save = { ...s.save, activeKinlingId: s.kinlingId };
+  const { id, text: raw } = await loggedComplete(api, { turnId, kind: 'tactic' }, { messages: tacticMessages(save, text), maxTokens: TACTIC_MAX_TOKENS, temperature: 0, jsonSchema: tacticSchema(), timeoutMs: 20_000 });
+  const tactic = parseTactic(raw, text, labKinling(s).name);
+  patchCall(api, id, { parsed: { tactic: tactic ?? 'none', ...(tactic ? { strength: MODEL_TACTIC_STRENGTH } : {}) } });
+  if (!tactic) return;
+  const at = labNow(api.get());
+  const next = draft(api.get().save);
+  const k = kinlingById(next, s.kinlingId)!;
+  const p = persuade(k, tactic, next.player.name ?? 'My friend', at, MODEL_TACTIC_STRENGTH);
+  advanceAct(next, k, at);
+  const persuasion = { ...k.arc.lastPersuasion!, applied: p.applied, source: 'model' as const };
+  api.update((x) => ({ ...x, save: next, turns: x.turns.map((t) => (t.id === turnId ? { ...t, persuasion } : t)) }));
 }
 
 /** Ask the model how the latest conversation moved the kinling's traits, and apply it within limits. */

@@ -169,7 +169,17 @@ await step('care actions respond immediately (groom, rest, play, feed)', async (
   const clean1 = await getNeed('Cleanliness');
   expect(clean1 >= clean0, `cleanliness did not rise (${clean0} → ${clean1})`);
   await page.getByRole('button', { name: 'Rest' }).click();
-  await page.getByRole('button', { name: 'Play' }).click();
+  // Playing is a task: pick a toy, pop the bubbles, and the toy is used up.
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await page.getByRole('button', { name: /Blow the Bubble Wand, 1 left/ }).click();
+  for (let i = 0; i < 5; i++) await page.getByRole('button', { name: 'Pop bubble' }).first().click({ force: true });
+  await page.locator('.play-task').waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const left = await page.getByRole('button', { name: /Bubble Wand, \d+ left/ }).getAttribute('aria-label');
+  expect(/0 left/.test(left ?? ''), `bubble wand was not used up (${left})`);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  const tops = await page.locator('.needs .meter').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  expect(new Set(tops).size === 1, `meters wrap onto more than one row (${tops.join(', ')})`);
   await page.getByRole('button', { name: 'Feed', exact: true }).click();
   await page.getByRole('button', { name: /Feed Seed Bun/ }).click();
   const speech = await page.locator('.speech').textContent();
@@ -333,7 +343,7 @@ await step('export backup produces a validated JSON file', async () => {
   const path = await download.path();
   exported = JSON.parse(readFileSync(path, 'utf8'));
   expect(exported.format === 'kinling-save', 'format tag');
-  expect(exported.save.schemaVersion === 5, 'schema version');
+  expect(exported.save.schemaVersion === 10, 'schema version');
   expect(exported.save.kinlings[0].name === 'Mochi', 'kinling name');
   writeFileSync(join(OUT, 'exported-save.json'), JSON.stringify(exported, null, 2));
   return `${download.suggestedFilename()} (${JSON.stringify(exported).length} bytes)`;
@@ -386,7 +396,9 @@ function withFourKinlings(file) {
     ['Fig', { curiosity: 66, confidence: 55, playfulness: 40 }],
     ['Luma', { curiosity: 52, confidence: 47, playfulness: 58 }],
   ];
-  for (const [i, [name, personality]] of extras.entries()) {
+  for (const [i, [name, temperament]] of extras.entries()) {
+    // Story traits come from the first kinling; temperament is set per sibling.
+    const personality = { ...base.personality, ...temperament };
     s.kinlings.push({
       ...structuredClone(base),
       id: `kin_e2e_${i}`,
@@ -399,7 +411,7 @@ function withFourKinlings(file) {
       chatSummary: null,
       appearanceHistory: [],
       careLog: { feed: [], groom: [], rest: [], play: [] },
-      socialDaily: { ...base.socialDaily, socialPersonality: { curiosity: 0, confidence: 0, playfulness: 0 }, feelingDelta: {} },
+      socialDaily: { ...base.socialDaily, socialPersonality: Object.fromEntries(Object.keys(base.personality).map((k) => [k, 0])), feelingDelta: {} },
     });
   }
   s.feelings = s.feelings.filter((f) => f.to === 'player');

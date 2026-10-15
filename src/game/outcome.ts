@@ -1,4 +1,4 @@
-import type { FoodId, KeepsakeId, LifeStage, MaterialCost, SaveData, TraitId } from './types';
+import type { FoodId, KeepsakeId, LifeStage, MaterialCost, SaveData, ToyId, TraitId } from './types';
 
 export type CreatureAnim = 'idle' | 'happy' | 'eating' | 'playing' | 'sleeping' | 'grooming' | 'puzzled';
 export type SfxId = 'munch' | 'boing' | 'brush' | 'snooze' | 'chime' | 'pop' | 'bonk' | 'sparkle' | 'collect' | 'error';
@@ -6,6 +6,7 @@ export type SfxId = 'munch' | 'boing' | 'brush' | 'snooze' | 'chime' | 'pop' | '
 export interface RewardSummary {
   materials: MaterialCost;
   foods: Partial<Record<FoodId, number>>;
+  toys: Partial<Record<ToyId, number>>;
   keepsakes: KeepsakeId[];
   tier: 'none' | 'bronze' | 'silver' | 'gold';
   score: number;

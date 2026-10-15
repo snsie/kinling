@@ -6,8 +6,10 @@ import { activeKinling, createSave, draft, kinlingById } from '../game/state';
 import type { EggType, Personality, SaveData } from '../game/types';
 import { uid } from '../game/util';
 import { SaveStorage } from '../persistence/db';
-import { defaultConfig } from './templates';
-import type { LabConfig, LabSession } from './types';
+import { migrateSave } from '../persistence/migrations';
+import { SAVE_SCHEMA_VERSION } from '../game/types';
+import { defaultConfig, upgradeEvolveSystem } from './templates';
+import type { EvolveConfig, LabConfig, LabSession } from './types';
 
 export interface FreshOptions {
   egg: EggType;
@@ -31,8 +33,35 @@ function newSession(seed: SaveData, kinlingId: string, source: LabSession['sourc
     turns: [],
     calls: [],
     traitSteps: [],
+    arcSteps: [],
+    clockOffset: 0,
     config: config ? structuredClone(config) : defaultConfig(),
   };
+}
+
+/** Fill in fields that sessions saved by older versions of the lab lack. */
+export function normalizeSession(s: LabSession): LabSession {
+  const config = defaultConfig();
+  // Sessions keep whole saves; bring older ones up to the current format.
+  const upgrade = (save: SaveData) => (save.schemaVersion === SAVE_SCHEMA_VERSION ? save : migrateSave(save).save);
+  const seed = upgrade(s.seed);
+  // Trait history from before a trait existed starts it at the kinling's starting value.
+  const start = seed.kinlings.find((k) => k.id === s.kinlingId)?.personality;
+  const fill = (p: Personality) => (start ? { ...start, ...p } : p);
+  return {
+    ...s,
+    save: upgrade(s.save),
+    seed,
+    traitSteps: s.traitSteps.map((t) => ({ ...t, before: fill(t.before), after: fill(t.after) })),
+    arcSteps: s.arcSteps ?? [],
+    clockOffset: s.clockOffset ?? 0,
+    config: { chat: { ...config.chat, ...s.config?.chat }, evolve: upgradeEvolve({ ...config.evolve, ...s.config?.evolve }), story: { ...config.story, ...s.config?.story } },
+  };
+}
+
+/** An evolve prompt left at an old default moves to the current one (sessions keep their own copy). */
+function upgradeEvolve(evolve: EvolveConfig): EvolveConfig {
+  return { ...evolve, systemTemplate: upgradeEvolveSystem(evolve.systemTemplate) };
 }
 
 /** A newly hatched kinling with chosen traits, set up the way onboarding leaves it. */
@@ -105,7 +134,8 @@ export async function listSessions(): Promise<SessionInfo[]> {
 }
 
 export async function loadSession(id: string): Promise<LabSession | null> {
-  return (await labDb().sessions.get(id))?.session ?? null;
+  const s = (await labDb().sessions.get(id))?.session;
+  return s ? normalizeSession(s) : null;
 }
 
 export async function storeSession(session: LabSession): Promise<void> {
@@ -122,10 +152,5 @@ export function parseSessionFile(text: string): LabSession {
   if (!data || typeof data !== 'object' || !data.save || !data.seed || !data.kinlingId || !Array.isArray(data.turns) || !Array.isArray(data.calls) || !Array.isArray(data.traitSteps)) {
     throw new Error('This file is not a Personality Lab session.');
   }
-  const config = defaultConfig();
-  return {
-    ...(data as LabSession),
-    id: uid('lab'),
-    config: { chat: { ...config.chat, ...data.config?.chat }, evolve: { ...config.evolve, ...data.config?.evolve } },
-  };
+  return normalizeSession({ ...(data as LabSession), id: uid('lab') });
 }

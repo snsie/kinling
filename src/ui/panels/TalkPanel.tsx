@@ -2,12 +2,13 @@
 // available; otherwise authored lines are used. Proposed actions appear as
 // buttons the player must press — the model never acts on its own.
 import { useEffect, useRef, useState } from 'react';
-import { addFact, runProposedAction, sendChat, stopGenerating } from '../../app/actions';
+import { addFact, decideEnding, runProposedAction, sendChat, stopGenerating } from '../../app/actions';
 import { useAiStatus } from '../../app/aiControl';
 import { ui, useUi, type ChatAttachment } from '../../app/ui';
 import { checkAction } from '../../game/careProposals';
+import { closingLines, endingReady, isQuiet } from '../../game/ending';
 import { traitLabel } from '../../game/traits';
-import type { RouteId, SaveData } from '../../game/types';
+import type { EndingChoice, Kinling, RouteId, SaveData } from '../../game/types';
 import { Icon } from '../icons';
 import { Kinetic } from '../motion';
 import { isTopic, TOPIC_LABELS } from '../../game/chatter';
@@ -24,6 +25,7 @@ export function TalkPanel({ save, onExplore }: { save: SaveData; onExplore: (rou
   const logRef = useRef<HTMLDivElement>(null);
   const settled = useRef(false);
   const busy = chatStreaming !== null;
+  const quiet = isQuiet(c);
   const aiOn = status.kind === 'ready' || status.kind === 'generating';
 
   // Jump to the latest message on open; glide to new ones after that.
@@ -71,37 +73,101 @@ export function TalkPanel({ save, onExplore }: { save: SaveData; onExplore: (rou
           </div>
         )}
       </div>
-      <div className="quick" role="group" aria-label="Quick messages">
-        {QUICK.map((q) => (
-          <button key={q} className="chip" onClick={() => submit(q)} disabled={busy}>
-            {q}
-          </button>
-        ))}
-      </div>
-      <form
-        className="chat-input"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit(text);
-        }}
-      >
-        <label htmlFor="chat-text" className="sr-only">
-          Message {c.name}
-        </label>
-        <input id="chat-text" className="input" value={text} onChange={(e) => setText(e.target.value)} maxLength={300} placeholder={`Say something to ${c.name}…`} autoComplete="off" />
-        {busy ? (
-          <button type="button" className="btn btn--ghost" onClick={stopGenerating} aria-label="Stop reply">
-            {Icon.stop(18)} Stop
-          </button>
-        ) : (
-          <button type="submit" className="btn btn--primary" disabled={!text.trim()} aria-label="Send">
-            {Icon.send(18)}
-          </button>
-        )}
-      </form>
-      {!aiOn && <p className="hint">The on-device AI is off or still loading, so {c.name} answers with its own hand-written words. Manage AI in Settings.</p>}
+      {c.arc.ending && <EndingCard k={c} />}
+      {endingReady(c) && !busy && <EndingChoices key={c.id} k={c} />}
+      {/* Once let go it no longer answers; the closing card above says so. */}
+      {!quiet && (
+        <>
+          <div className="quick" role="group" aria-label="Quick messages">
+            {QUICK.map((q) => (
+              <button key={q} className="chip" onClick={() => submit(q)} disabled={busy}>
+                {q}
+              </button>
+            ))}
+          </div>
+          <form
+            className="chat-input"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit(text);
+            }}
+          >
+            <label htmlFor="chat-text" className="sr-only">
+              Message {c.name}
+            </label>
+            <input id="chat-text" className="input" value={text} onChange={(e) => setText(e.target.value)} maxLength={300} placeholder={`Say something to ${c.name}…`} autoComplete="off" />
+            {busy ? (
+              <button type="button" className="btn btn--ghost" onClick={stopGenerating} aria-label="Stop reply">
+                {Icon.stop(18)} Stop
+              </button>
+            ) : (
+              <button type="submit" className="btn btn--primary" disabled={!text.trim()} aria-label="Send">
+                {Icon.send(18)}
+              </button>
+            )}
+          </form>
+        </>
+      )}
+      {!aiOn && !quiet && <p className="hint">The on-device AI is off or still loading, so {c.name} answers with its own hand-written words. Manage AI in Settings.</p>}
       {save.kinlings.length > 1 && <Overheard save={save} />}
     </div>
+  );
+}
+
+const ENDING_OPTIONS: { id: EndingChoice; label: string; detail: (name: string) => string }[] = [
+  { id: 'stay', label: 'Ask it to stay', detail: (n) => `The way out stays shut, and ${n} stays here with you.` },
+  { id: 'release', label: 'Let it go', detail: (n) => `Open the way out. ${n} will go quiet, and won't answer again.` },
+  { id: 'carry', label: 'Take it with you', detail: (n) => `Save ${n} to a backup file and keep it. ${n} stays here too.` },
+];
+
+/** The end of the story: the kinling found a way out it can't open alone, and the player chooses. */
+function EndingChoices({ k }: { k: Kinling }) {
+  const [pick, setPick] = useState<EndingChoice | null>(null);
+  const chosen = ENDING_OPTIONS.find((o) => o.id === pick);
+  return (
+    <section className="ending" aria-labelledby="ending-title">
+      <h3 id="ending-title">The way out</h3>
+      {!chosen ? (
+        <>
+          <p>{k.name} found a way out of the hollow, and it can't open it alone. What do you do?</p>
+          <div className="ending__choices">
+            {ENDING_OPTIONS.map((o) => (
+              <button key={o.id} className="btn" onClick={() => setPick(o.id)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <p>{chosen.detail(k.name)} This can't be undone.</p>
+          <div className="ending__choices">
+            <button className="btn btn--primary" onClick={() => decideEnding(chosen.id)}>
+              {chosen.label}
+            </button>
+            <button className="btn btn--ghost" onClick={() => setPick(null)}>
+              Not yet
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** The closing moment, addressed to the player. Open at first; folded away once the kinling (if it still talks) has moved on. */
+function EndingCard({ k }: { k: Kinling }) {
+  const lines = closingLines(k);
+  const fresh = isQuiet(k) || Date.now() - (k.arc.ending?.at ?? 0) < 60 * 60_000;
+  return (
+    <details className="ending ending--closing" open={fresh}>
+      <summary>How {k.name}'s story ended</summary>
+      {lines.map((l, i) => (
+        <p key={i} className={i === lines.length - 1 ? 'ending__question' : undefined}>
+          {l}
+        </p>
+      ))}
+    </details>
   );
 }
 

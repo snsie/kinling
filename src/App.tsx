@@ -4,6 +4,7 @@ import { startAiFromSettings } from './app/aiControl';
 import { useReducedMotion } from './app/motion';
 import { configureSound } from './app/sfx';
 import { store } from './app/store';
+import { useStoryEffects } from './app/story';
 import { ui } from './app/ui';
 import { Toasts } from './ui/common';
 import { GameScreen } from './ui/GameScreen';
@@ -15,6 +16,7 @@ import { activeKinling } from './game/state';
 export function App() {
   const { save, status, notice } = useStore();
   const reducedMotion = useReducedMotion(save?.settings.reducedMotion);
+  useStoryEffects(save?.onboarding.step === 'done' ? save : null);
 
   useEffect(() => {
     void store.init().then(() => {

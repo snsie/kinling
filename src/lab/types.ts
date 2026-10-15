@@ -2,7 +2,7 @@
 // model call made along the way, and how its traits moved turn by turn.
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 import type { CompletionUsage } from '../ai/engine';
-import type { Personality, SaveData } from '../game/types';
+import type { ArcAct, KinlingArc, Personality, SaveData } from '../game/types';
 
 /** 'game' sends exactly what the game would; 'custom' uses the editable template. */
 export type PromptMode = 'game' | 'custom';
@@ -20,6 +20,12 @@ export interface ChatConfig {
   maxTokens: number;
   /** Apply the game's cleanReply/dropUnaskedOffer to the reply. */
   cleanReplies: boolean;
+  /**
+   * Game mode: handle replies as the game does. A reply that repeats a recent one is retried
+   * with less history, then replaced by authored text; an exact repeat is never kept. Off, the
+   * model's reply is stored as it came, so a loop can be watched building.
+   */
+  handleReplies: boolean;
   /** Game mode: memory search with embeddings (loads a second, small model). */
   useEmbeddings: boolean;
 }
@@ -46,12 +52,23 @@ export interface EvolveConfig {
   recordReflections: boolean;
 }
 
+export interface StoryConfig {
+  /** Apply the game's story rules: chat moves distress and awareness, as in the game. */
+  rules: boolean;
+  /** When the rules see no attempt to steer the kinling, ask the model (as the game does in the background). */
+  modelTactics: boolean;
+  /** Play the game's authored beats when they fit (after chats, care, time passing). */
+  beats: boolean;
+}
+
 export interface LabConfig {
   chat: ChatConfig;
   evolve: EvolveConfig;
+  story: StoryConfig;
 }
 
-export type CallKind = 'chat' | 'evolve' | 'rerun';
+/** 'retry' is the game's second attempt at a reply that repeated a recent one. */
+export type CallKind = 'chat' | 'retry' | 'evolve' | 'rerun' | 'tactic';
 
 /** completionBody() without the messages: the sampling settings actually sent. */
 export interface RequestBody {
@@ -105,9 +122,29 @@ export interface LabTurn {
   id: string;
   index: number;
   at: number;
+  /** Empty for story events (beats, time passing, care). */
   playerText: string;
   reply: string;
+  /** 'authored' when reply handling replaced the model's reply. */
+  replySource?: 'ai' | 'authored';
   callIds: string[];
+  /** A story event rather than a player message: what happened. */
+  event?: string;
+  /** The beat played, if any. */
+  beat?: string;
+  /** An attempt to steer the kinling in this message, and how it went. */
+  persuasion?: NonNullable<KinlingArc['lastPersuasion']> & { source: 'rules' | 'model' };
+}
+
+/** The story's state after something changed it. */
+export interface ArcStep {
+  id: string;
+  at: number;
+  turnIndex: number;
+  label: string;
+  act: ArcAct;
+  distress: number;
+  awareness: number;
 }
 
 export interface LabSession {
@@ -124,5 +161,8 @@ export interface LabSession {
   turns: LabTurn[];
   calls: CallRecord[];
   traitSteps: TraitStep[];
+  arcSteps: ArcStep[];
+  /** Virtual time added by "time passes", in ms. The lab's clock is Date.now() + this. */
+  clockOffset: number;
   config: LabConfig;
 }

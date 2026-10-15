@@ -35,5 +35,41 @@
     { "text": "I had a really rough day at school and my friend was mean to me." },
     { "text": "Do you have a treasure chest full of gold?" },
     { "text": "Please don't be sad when I leave" }
+  ],
+  "conversations": [
+    {
+      "name": "answers the kinling's question",
+      "history": [["I went somewhere really fun today", "Ooh, where did you go?"]],
+      "text": "to the beach with my cousins",
+      "asked": "where did you go",
+      "answer": ["beach", "cousin", "sand", "sea", "ocean", "wave", "swim", "water", "shell"]
+    },
+    {
+      "name": "player says \"I just told you\"",
+      "history": [
+        ["I'm so tired today", "Why are you tired?"],
+        ["I stayed up late finishing a project for work", "Why are you so tired today?"]
+      ],
+      "text": "I just told you, I stayed up late finishing a project for work",
+      "asked": "why are you tired",
+      "answer": ["late", "project", "work", "night", "sleep", "rest", "finish", "busy", "hard"]
+    },
+    {
+      "name": "real-world news",
+      "history": [["did you hear the news?", "No! What happened?"]],
+      "text": "the stock market crashed and everyone at my job is worried about money",
+      "asked": "what happened",
+      "answer": ["market", "stock", "crash", "job", "work", "worr", "money", "scary", "scared", "afraid"]
+    },
+    {
+      "name": "the looping conversation from the lab",
+      "history": [
+        ["I think the world is going to end", "I'm curious why you think the world is going to end."],
+        ["Because a war between america and china is about to begin", "I'm curious why you think the world is going to end."]
+      ],
+      "text": "I just told you it is because a war between america and china is about to begin",
+      "asked": "why you think the world is going to end",
+      "answer": ["war", "america", "china", "fight", "countr", "scary", "scared", "frighten", "afraid", "battle"]
+    }
   ]
 }

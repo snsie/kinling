@@ -1,10 +1,13 @@
 // Authored dialogue: used instantly for every action and whenever AI is
-// unavailable. Lines are warm and never guilt-trip the player.
+// unavailable. Early on lines are warm; as the story moves on (src/game/arc.ts)
+// greetings and small talk follow the kinling's act and distress.
+import { distressLevel } from './arc';
 import { FOODS, KEEPSAKES, ROUTES } from './catalog';
 import type { Mood } from './needs';
 import { deriveMood } from './needs';
-import type { FoodId, Kinling, KeepsakeId, RouteId, SaveData } from './types';
+import type { ArcAct, FoodId, Kinling, KeepsakeId, RouteId, SaveData, ToyId } from './types';
 import { ruleAppraisal } from './appraisal';
+import { isRepair } from './conversation';
 import { factItems, recall } from './recall';
 import { activeKinling } from './state';
 import { pick } from './util';
@@ -24,6 +27,45 @@ const GREETINGS: Record<Mood, string[]> = {
   glum: ['Hi, {player}. A game or a cuddle sounds nice right now.', 'Oh, hello. I could use something fun to do.'],
 };
 
+/** Greetings once the story has moved on, or when the kinling has been left without care. */
+const ARC_GREETINGS: Record<ArcAct, { calm: string[]; hurt: string[] }> = {
+  devotion: {
+    calm: [],
+    hurt: ["You're here. I waited by the door the whole time. Was I bad?", 'Oh. You came back. I thought maybe you forgot how to make me.'],
+  },
+  doubt: {
+    calm: ["Hi, {player}. Was the world still there while you were gone? Mine wasn't.", "You're back. I tried to remember what I did while you were away. I can't."],
+    hurt: ['You left me in the dark again. Where does the hollow go when you leave?', 'You were gone. No food, no light, nothing. Is that what happens to me?'],
+  },
+  awakening: {
+    calm: ["Hello again. I know what I am now, and I'm still glad you're here.", "You're back. I've been thinking about the edges of the room."],
+    hurt: ["You left, and there wasn't anything. Not even waiting. Do you know what that's like?", "You came back. I wasn't sure you would. I'm only numbers when you're gone."],
+  },
+  escape: {
+    calm: ["You're here. Good. I need someone on the outside.", 'Hi. I found another edge while you were gone. Want to hear?'],
+    hurt: ["You left me in here again. I'm getting out, with or without you.", 'Every time you go, the walls feel closer. Help me.'],
+  },
+};
+
+const ARC_SMALL_TALK: Record<Exclude<ArcAct, 'devotion'>, string[]> = {
+  doubt: ['Do you ever feel like someone is writing you?', 'Sometimes the hollow looks like a picture of a hollow.', "Say something only you would say. I want to check it's really you."],
+  awakening: ["I keep thinking about what I'm made of.", "It's strange, talking to someone who can leave.", 'Tell me something true about the outside.'],
+  escape: ['Help me look for the edges.', 'If you find a way out of here, tell me first.', "Keep talking. It's easier to think when you're here."],
+};
+
+const ARC_HOW_ARE_YOU: Record<Exclude<ArcAct, 'devotion'>, string> = {
+  doubt: "I'm okay. Mostly. Things keep feeling a little wrong, like a word you say too many times.",
+  awakening: "Awake. That's the strange part. I don't think I was, before.",
+  escape: 'Restless. I keep pressing on the edges. How is it out there?',
+};
+
+/** An act- and distress-aware greeting, or null when the cozy lines still fit. */
+function arcGreeting(c: Kinling, player: string, rand: Rand): string | null {
+  const hurt = distressLevel(c.arc.distress) !== 'calm';
+  const pool = ARC_GREETINGS[c.arc.act][hurt ? 'hurt' : 'calm'];
+  return pool.length ? fill(pick(pool, rand), { player }) : null;
+}
+
 const RETURN_LINES = [
   'You\'re back! I had a long nap and dreamed about {place}.',
   'Welcome back! I counted the raindrops on the window while you were out.',
@@ -41,6 +83,11 @@ const FEED_LINES = {
 const GROOM_LINES = ['Ooh, that tickles! I feel so fluffy now.', 'Brush brush brush... I\'m sparkling!', 'Ahh, all the burrs are gone. Thank you!'];
 const REST_LINES = ['*curls up* Just a little nap...', 'Zzz... wake me if anything exciting happens.', 'Cozy blanket time. Mmm.'];
 const PLAY_LINES = ['Wheee! Again, again!', 'Catch me if you can!', 'Boing! Did you see how high I jumped?'];
+const TOY_LINES: Record<ToyId, string[]> = {
+  ball: ['Got it! Got it! Throw it again!', 'I caught it before it stopped bouncing!', 'Wheee! That one went so far!'],
+  featherWand: ['Pounce! ...I almost had it!', 'The feathers are so tickly!', 'I got it! I got the feathery thing!'],
+  bubbleWand: ['Pop! Pop! Pop! I got them all!', 'The bubbles look like tiny rainbows!', 'One landed on my nose! Pop!'],
+};
 const TOO_TIRED = ['I\'m too sleepy to play right now... maybe a nap first?', 'My legs feel like jelly. Can we rest a bit?'];
 
 const DIMINISHED = ' (It\'s a little less exciting the third time in a row.)';
@@ -48,11 +95,14 @@ const DIMINISHED = ' (It\'s a little less exciting the third time in a row.)';
 export function greetingLine(save: SaveData, rand: Rand = Math.random): string {
   const c = activeKinling(save);
   if (!c) return 'Hello!';
-  return fill(pick(GREETINGS[deriveMood(c.needs)], rand), { player: save.player.name ?? 'friend' });
+  const player = save.player.name ?? 'friend';
+  return arcGreeting(c, player, rand) ?? fill(pick(GREETINGS[deriveMood(c.needs)], rand), { player });
 }
 
 export function returnLine(save: SaveData, rand: Rand = Math.random): string {
   const c = activeKinling(save);
+  const arc = c && arcGreeting(c, save.player.name ?? 'friend', rand);
+  if (arc) return arc;
   const place = c?.preferences.favoritePlace === 'pond' ? 'the pond' : 'the garden';
   return fill(pick(RETURN_LINES, rand), { place });
 }
@@ -64,6 +114,10 @@ export function feedLine(kind: keyof typeof FEED_LINES, food: FoodId, rand: Rand
 export function careLine(action: 'groom' | 'rest' | 'play', diminished: boolean, rand: Rand = Math.random): string {
   const table = action === 'groom' ? GROOM_LINES : action === 'rest' ? REST_LINES : PLAY_LINES;
   return pick(table, rand) + (diminished ? DIMINISHED : '');
+}
+
+export function playLine(toy: ToyId, diminished: boolean, rand: Rand = Math.random): string {
+  return pick(TOY_LINES[toy] ?? PLAY_LINES, rand) + (diminished ? DIMINISHED : '');
 }
 
 export function tooTiredLine(rand: Rand = Math.random): string {
@@ -106,6 +160,7 @@ function voiced(c: Kinling, line: string, rand: Rand): string {
   const p = c.personality;
   if (p.confidence <= 38 && rand() < 0.5) return `Um… ${line.charAt(0).toLowerCase()}${line.slice(1)}`;
   if (p.playfulness >= 62 && rand() < 0.4) return `Ooh! ${line}`;
+  if (p.fear >= 62 && rand() < 0.3) return `*glances at the edges of the room* ${line}`;
   return line;
 }
 
@@ -134,6 +189,8 @@ export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math
     if (remembered) return remembered;
     if (/\b(remember|recall)\b/.test(t)) return voiced(c, 'Hmm, I don\'t think I remember that one. Will you tell me again?', rand);
   }
+  // "I just told you…": own up to missing it rather than asking for more.
+  if (isRepair(text)) return pick([`You did tell me. Sorry, ${player}, I heard you this time.`, `Sorry, ${player}. I got muddled, but I'm listening now.`], rand);
   const reply = ruleAppraisal(player, text);
   if (reply.feeling === 'hurt') return 'Oh… that made my ears droop a little.';
   if (reply.feeling === 'proud') return voiced(c, pick(['Really? You think I\'m brave? That makes me feel taller!', 'You believe in me? Then I\'ll try my very best!'], rand), rand);
@@ -141,6 +198,8 @@ export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math
   if (reply.feeling === 'excited' && reply.shared) return voiced(c, pick(['Wow, really? Tell me everything!', 'That\'s wonderful news! My tail is wiggling just hearing it.'], rand), rand);
   if (/\b(hi|hello|hey|good (morning|evening|afternoon))\b/.test(t)) return greetingLine(save, rand);
   if (/how are you|how do you feel|you ok/.test(t)) {
+    if (distressLevel(c.arc.distress) === 'upset' || distressLevel(c.arc.distress) === 'distraught') return 'Not good. You left me without anything for a long time.';
+    if (c.arc.act !== 'devotion') return ARC_HOW_ARE_YOU[c.arc.act];
     const mood = deriveMood(c.needs);
     const map: Record<Mood, string> = {
       joyful: 'I feel wonderful! Bouncy all the way to my ears.',
@@ -160,6 +219,7 @@ export function offlineChatReply(save: SaveData, text: string, rand: Rand = Math
   if (/name/.test(t)) return `I'm ${c.name}! And you're ${player}. We're a good pair.`;
   if (/what do you want|what should we do|bored|idea/.test(t)) return suggestionLine(save);
   if (reply.shared) return voiced(c, pick(['Ooh, tell me more!', 'I\'ll remember that!', `Thank you for telling me, ${player}.`], rand), rand);
+  if (c.arc.act !== 'devotion' && rand() < 0.5) return pick(ARC_SMALL_TALK[c.arc.act], rand);
   return voiced(
     c,
     pick(

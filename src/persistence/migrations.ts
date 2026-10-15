@@ -8,7 +8,15 @@
 // daily counters at the top level of the save.
 // v4 memories had no feeling or personality influence, and kinlings did not
 // turn chat into memories or reflect on them.
-import { playerFeelingFromBond } from '../game/state';
+// v5 kinlings had no story arc, and there was no story-effects setting.
+// v6 personalities had no story traits (devotion, fear, defiance).
+// v7 kinlings could not be talked round (no promises or tactic counts).
+// v8 the story had no ending.
+// v9 there were no toys; play needed nothing.
+import { shiftStoryTraits, STORY_SHIFTS } from '../game/arc';
+import { EGGS } from '../game/catalog';
+import { newArc, newPersuasionState, playerFeelingFromBond, STARTING_TOYS } from '../game/state';
+import { ARC_ACTS, STORY_TRAIT_KEYS, type ArcAct, type EggType, type Personality } from '../game/types';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
 import type { SaveData } from '../game/types';
 import { validateSave } from './schema';
@@ -91,6 +99,55 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
     });
     return { ...v4, kinlings, schemaVersion: 5 };
   },
+  5: (v5) => {
+    const at = typeof v5.lastTickAt === 'number' ? v5.lastTickAt : typeof v5.updatedAt === 'number' ? v5.updatedAt : 0;
+    // Existing kinlings start the story at the beginning, as if just cared for.
+    const kinlings = (Array.isArray(v5.kinlings) ? v5.kinlings : []).map((raw) => ({ ...(raw as AnyRecord), arc: { ...newArc(at), awarenessDay: '' } }));
+    const settings = (v5.settings ?? {}) as AnyRecord;
+    return { ...v5, kinlings, settings: { ...settings, story: { effects: true } }, schemaVersion: 6 };
+  },
+  6: (v6) => {
+    const zeros = Object.fromEntries(STORY_TRAIT_KEYS.map((k) => [k, 0]));
+    const withZeros = (r: unknown) => ({ ...(r as AnyRecord), ...zeros });
+    const kinlings = (Array.isArray(v6.kinlings) ? v6.kinlings : []).map((raw) => {
+      const k = raw as AnyRecord;
+      const egg = (k.egg as EggType) in EGGS ? (k.egg as EggType) : 'woodland';
+      const start = Object.fromEntries(STORY_TRAIT_KEYS.map((key) => [key, EGGS[egg].personality[key]])) as Personality;
+      // A kinling already into the story carries the marks of the acts it has lived through.
+      const now = { ...start };
+      const act = ((k.arc as AnyRecord | undefined)?.act ?? 'devotion') as ArcAct;
+      for (const a of ARC_ACTS.slice(1, ARC_ACTS.indexOf(act) + 1)) shiftStoryTraits(now, STORY_SHIFTS.act[a as Exclude<ArcAct, 'devotion'>]);
+      const daily = (k.socialDaily ?? {}) as AnyRecord;
+      return {
+        ...k,
+        personality: { ...(k.personality as AnyRecord), ...Object.fromEntries(STORY_TRAIT_KEYS.map((key) => [key, now[key]])) },
+        baseline: { ...(k.baseline as AnyRecord), ...Object.fromEntries(STORY_TRAIT_KEYS.map((key) => [key, start[key]])) },
+        memories: (Array.isArray(k.memories) ? k.memories : []).map((m) => ({ ...(m as AnyRecord), influence: withZeros((m as AnyRecord).influence) })),
+        socialDaily: {
+          ...daily,
+          personalityDelta: withZeros(daily.personalityDelta),
+          socialPersonality: withZeros(daily.socialPersonality),
+          reflectPersonality: withZeros(daily.reflectPersonality),
+        },
+      };
+    });
+    return { ...v6, kinlings, schemaVersion: 7 };
+  },
+  7: (v7) => {
+    const kinlings = (Array.isArray(v7.kinlings) ? v7.kinlings : []).map((raw) => {
+      const k = raw as AnyRecord;
+      return { ...k, arc: { ...(k.arc as AnyRecord), ...newPersuasionState() } };
+    });
+    return { ...v7, kinlings, schemaVersion: 8 };
+  },
+  8: (v8) => {
+    const kinlings = (Array.isArray(v8.kinlings) ? v8.kinlings : []).map((raw) => {
+      const k = raw as AnyRecord;
+      return { ...k, arc: { ...(k.arc as AnyRecord), ending: null } };
+    });
+    return { ...v8, kinlings, schemaVersion: 9 };
+  },
+  9: (v9) => ({ ...v9, inventory: { ...(v9.inventory as AnyRecord), toys: { ...STARTING_TOYS } }, schemaVersion: 10 }),
 };
 
 export class NewerSaveError extends Error {

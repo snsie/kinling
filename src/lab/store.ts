@@ -2,9 +2,10 @@
 // Sessions autosave to the lab's own database shortly after each change.
 import { useSyncExternalStore } from 'react';
 import { ai } from '../ai/engine';
-import type { Personality, SaveData } from '../game/types';
+import type { ArcAct, CareAction, Personality, SaveData } from '../game/types';
 import { evolveNow, rerunCall, runTurn, setTraits, type LabStoreApi } from './pipeline';
 import { deleteSession, freshSession, listSessions, loadSession, parseSessionFile, readGameSave, restartSession, sessionFromGame, storeSession, type FreshOptions, type SessionInfo } from './session';
+import { labCare, passTime, playBeatById, setArc } from './story';
 import type { CallRecord, LabConfig, LabSession } from './types';
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
 
@@ -156,6 +157,18 @@ export const lab = {
         await runTurn(api, todo[i]!);
       }
     });
+  },
+  passTime(hours: number) {
+    if (state.session && !state.busy) passTime(api, hours);
+  },
+  care(action: CareAction) {
+    if (state.session && !state.busy) labCare(api, action);
+  },
+  playBeat(id: string) {
+    if (state.session && !state.busy) playBeatById(api, id);
+  },
+  setArc(patch: { act?: ArcAct; distress?: number; awareness?: number }) {
+    if (state.session) setArc(api, patch);
   },
   stop() {
     stopScript = true;

@@ -1,10 +1,12 @@
 // Prompt construction for each lab call. Pure: given a session, the messages
 // that would be sent. The pipeline adds the model and the logging.
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
+import { modelName } from '../ai/models';
 import { chatMessages, type RecallVectors } from '../ai/prompts';
+import { arcChat } from '../game/arc';
 import { replyBudget, type ReplyBudget } from '../game/intent';
 import { addChatMessage } from '../game/social';
-import type { SaveData } from '../game/types';
+import type { ModelId, SaveData } from '../game/types';
 import { messageText } from './chatml';
 import { evolveSchema } from './evolve';
 import { labKinling, renderTemplate, templateVars } from './templates';
@@ -17,14 +19,20 @@ export interface ChatPrompt {
   save: SaveData;
 }
 
-export function buildChatPrompt(session: LabSession, playerText: string, now: number, vectors?: RecallVectors | null): ChatPrompt {
+/**
+ * The chat call for a player message. `modelId` is the model the lab has
+ * loaded: the prompt names it the way the game names its own model.
+ */
+export function buildChatPrompt(session: LabSession, playerText: string, now: number, vectors?: RecallVectors | null, modelId?: ModelId | null): ChatPrompt {
   const cfg = session.config.chat;
   const budget = replyBudget(playerText);
   const before = labKinling(session).chat;
-  const save = addChatMessage({ ...session.save, activeKinlingId: session.kinlingId }, session.kinlingId, 'player', playerText, 'player', now);
+  const settings = modelId ? { ...session.save.settings, ai: { ...session.save.settings.ai, enabled: true, modelId } } : session.save.settings;
+  let save = addChatMessage({ ...session.save, activeKinlingId: session.kinlingId, settings }, session.kinlingId, 'player', playerText, 'player', now);
+  if (session.config.story.rules) save = arcChat(save, session.kinlingId, playerText, now);
   if (cfg.promptMode === 'game') return { messages: chatMessages(save, playerText, now, budget, vectors), budget, save };
 
-  const system = renderTemplate(cfg.systemTemplate, templateVars(session));
+  const system = renderTemplate(cfg.systemTemplate, templateVars({ ...session, save }, modelId ? modelName(modelId) : null));
   const turns: { role: 'user' | 'assistant'; content: string }[] = [];
   for (const m of cfg.historyMessages > 0 ? before.slice(-cfg.historyMessages) : []) {
     const role = m.role === 'player' ? 'user' : 'assistant';
