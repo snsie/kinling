@@ -30,6 +30,7 @@ import { Minigame } from '../Minigame';
 import { Kinetic, useReveal } from '../motion';
 import { NeedsPanel } from '../Needs';
 import { RoomView } from '../RoomView';
+import { firstToy } from '../../game/care';
 import { activeKinling } from '../../game/state';
 
 const STEPS: { id: OnboardingStep; label: string }[] = [
@@ -552,7 +553,7 @@ function FirstCareStep({ save, reducedMotion }: { save: SaveData; reducedMotion:
           <button className="btn btn--primary" onClick={() => doCare('feed', 'dewberry')}>
             Feed a dewberry
           </button>
-          <button className="btn" onClick={() => doCare('play')}>
+          <button className="btn" onClick={() => ui.setPlayTask(firstToy(save) ?? 'ball')}>
             Play a game
           </button>
         </div>

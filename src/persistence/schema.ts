@@ -6,6 +6,7 @@ import { LIMITS } from '../game/state';
 import type { SaveData } from '../game/types';
 import {
   TACTICS,
+  ENDING_CHOICES,
   ARC_ACTS,
   CARE_ACTIONS,
   CHAT_ROLES,
@@ -27,6 +28,7 @@ import {
   ROUTE_IDS,
   SAVE_SCHEMA_VERSION,
   TAIL_IDS,
+  TOY_IDS,
 } from '../game/types';
 
 const time = z.number().finite().min(0).max(8.64e15);
@@ -141,6 +143,7 @@ const KinlingSchema = CreatureSchema.extend({
         applied: z.partialRecord(z.enum(['devotion', 'fear', 'defiance', 'awareness', 'distress']), z.number().finite().min(-100).max(100)),
       })
       .nullable(),
+    ending: z.object({ choice: z.enum(ENDING_CHOICES), at: time }).nullable(),
   }),
 });
 
@@ -196,6 +199,7 @@ export const SaveSchema = z.object({
   inventory: z.object({
     materials: recordOf(MATERIAL_IDS, z.number().int().min(0).max(999)),
     foods: recordOf(FOOD_IDS, z.number().int().min(0).max(999)),
+    toys: recordOf(TOY_IDS, z.number().int().min(0).max(999)),
     keepsakes: z
       .array(z.object({ id: z.enum(KEEPSAKE_IDS), foundAt: time, location: z.enum([...LOCATION_IDS, 'home']) }))
       .max(KEEPSAKE_IDS.length),

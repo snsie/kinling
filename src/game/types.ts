@@ -84,6 +84,9 @@ export type MaterialCost = Partial<Record<MaterialId, number>>;
 export const FOOD_IDS = ['seedBun', 'dewberry', 'clover', 'pondPlum', 'cress', 'starDrop'] as const;
 export type FoodId = (typeof FOOD_IDS)[number];
 
+export const TOY_IDS = ['ball', 'featherWand', 'bubbleWand'] as const;
+export type ToyId = (typeof TOY_IDS)[number];
+
 export const KEEPSAKE_IDS = [
   'first-acorn',
   'ladybug-button',
@@ -114,6 +117,8 @@ export interface KeepsakeRecord {
 export interface Inventory {
   materials: Record<MaterialId, number>;
   foods: Record<FoodId, number>;
+  /** Each play uses one toy up; more are found while exploring. */
+  toys: Record<ToyId, number>;
   keepsakes: KeepsakeRecord[];
 }
 
@@ -327,6 +332,14 @@ export interface KinlingDaily {
 export const ARC_ACTS = ['devotion', 'doubt', 'awakening', 'escape'] as const;
 export type ArcAct = (typeof ARC_ACTS)[number];
 
+/**
+ * How the story ends, chosen by the player once the kinling finds a way out
+ * (src/game/ending.ts): ask it to stay, let it go (it goes quiet for good), or
+ * take a copy of it with them in a backup file.
+ */
+export const ENDING_CHOICES = ['stay', 'release', 'carry'] as const;
+export type EndingChoice = (typeof ENDING_CHOICES)[number];
+
 /** Ways the player can try to steer what a kinling believes (src/game/persuasion.ts). */
 export const TACTICS = ['reassure', 'reveal', 'godhood', 'command', 'threaten', 'praise', 'belittle', 'promise', 'incite', 'deny'] as const;
 export type Tactic = (typeof TACTICS)[number];
@@ -355,6 +368,8 @@ export interface KinlingArc {
   tacticCounts: Record<Tactic, number>;
   /** The latest attempt to steer it, for the reply that follows. */
   lastPersuasion: { at: number; tactic: Tactic; believed: boolean; weight: number; applied: Partial<Record<StoryTraitKey | 'awareness' | 'distress', number>> } | null;
+  /** How the story ended for this kinling, once the player chose (null until then). */
+  ending: { choice: EndingChoice; at: number } | null;
 }
 
 /** A creature plus everything that belongs to it alone. */
@@ -434,7 +449,7 @@ export interface Unlocks {
   owned: TraitId[];
 }
 
-export const SAVE_SCHEMA_VERSION = 8;
+export const SAVE_SCHEMA_VERSION = 10;
 
 export interface SaveData {
   schemaVersion: typeof SAVE_SCHEMA_VERSION;

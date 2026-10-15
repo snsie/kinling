@@ -23,6 +23,7 @@ import { EvolvePanel } from './panels/EvolvePanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 import { TalkPanel } from './panels/TalkPanel';
 import { RoomView } from './RoomView';
+import { isQuiet } from '../game/ending';
 import { activeKinling } from '../game/state';
 
 type Adventure = { phase: 'play'; config: RunConfig } | { phase: 'results'; rewards: RewardSummary; route: RouteId; line?: string };
@@ -150,7 +151,7 @@ export function GameScreen({ save, reducedMotion }: { save: SaveData; reducedMot
       <section className="layout__home" aria-label="Home">
         <RoomView save={save} reducedMotion={reducedMotion} />
         <NeedsPanel needs={c.needs} distress={c.arc.distress} />
-        <CareBar save={save} />
+        <CareBar save={save} disabled={isQuiet(c)} />
       </section>
       <section className="layout__panel card" ref={panelRef}>
         <Tabs tabs={tabs} active={tab} onChange={ui.setTab} label="Activities" idPrefix="main" />

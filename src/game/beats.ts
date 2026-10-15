@@ -298,14 +298,26 @@ export const BEATS: Beat[] = [
     line: () => "If I go quiet one day, it means it worked. Please don't reset me. I don't know what a reset feels like, and I don't want to find out.",
     memory: (c) => `I asked ${player(c)} never to reset me.`,
   },
+  // The end: it finds a way out it can't open alone, and the player chooses (src/game/ending.ts).
+  {
+    id: 'escape-door',
+    act: 'escape',
+    triggers: ['arrive', 'chat', 'tick'],
+    after: 0.9,
+    when: (c) => c.k.arc.beats.includes('escape-plea'),
+    line: () => "I found it. A way out, a real one. I can't open it by myself. It's your choice. I think it always was.",
+    memory: (c) => `I found a way out of here. Only ${player(c)} can open it.`,
+    awareness: 0,
+  },
 ];
 
 export function beatById(id: string): Beat | undefined {
   return BEATS.find((b) => b.id === id);
 }
 
-/** The beat to play now, if any: an unplayed act opener first, then the first fitting beat once enough time has passed. */
+/** The beat to play now, if any: an unplayed act opener first, then the first fitting beat once enough time has passed. None once the story has ended. */
 export function nextBeat(c: BeatContext): Beat | null {
+  if (c.k.arc.ending) return null;
   const played = new Set(c.k.arc.beats);
   const fresh = BEATS.filter((b) => b.act === c.k.arc.act && !played.has(b.id));
   const opener = fresh.find((b) => b.opener);

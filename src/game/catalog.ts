@@ -11,6 +11,7 @@ import type {
   Personality,
   Preferences,
   RouteId,
+  ToyId,
   TraitId,
 } from './types';
 
@@ -82,6 +83,28 @@ export const FOODS: Record<FoodId, FoodDef> = {
   starDrop: { name: 'Star Drop', plural: 'Star Drops', description: 'A fizzy candy made from stardust.', hunger: 12, happiness: 14 },
 };
 
+export interface ToyDef {
+  name: string;
+  plural: string;
+  description: string;
+  /** What the player does with it, as a button label. */
+  verb: string;
+  happiness: number;
+  /** Energy the kinling spends playing with it. */
+  energy: number;
+  /** Where it turns up while exploring. */
+  locations: LocationId[];
+  /** Event text; {name} is the kinling. */
+  event: string;
+}
+
+export const TOYS: Record<ToyId, ToyDef> = {
+  ball: { name: 'Bouncy Ball', plural: 'Bouncy Balls', description: 'Throw it and watch them chase. It gets lost in the bushes after.', verb: 'Throw', happiness: 18, energy: 10, locations: ['garden', 'pond'], event: '{name} chased down a ball you threw.' },
+  featherWand: { name: 'Feather Wand', plural: 'Feather Wands', description: 'Wave it about and they pounce. The feathers do not last long.', verb: 'Wave', happiness: 16, energy: 7, locations: ['garden'], event: '{name} pounced at a feather wand you waved.' },
+  bubbleWand: { name: 'Bubble Wand', plural: 'Bubble Wands', description: 'Blow bubbles for them to pop. One bottle makes one game.', verb: 'Blow', happiness: 15, energy: 4, locations: ['pond'], event: '{name} popped bubbles you blew.' },
+};
+
+export const TOY_CAP = 9;
 export const FOOD_CAP = 20;
 export const MATERIAL_CAP = 99;
 

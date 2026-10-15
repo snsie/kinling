@@ -11,9 +11,11 @@
 // v5 kinlings had no story arc, and there was no story-effects setting.
 // v6 personalities had no story traits (devotion, fear, defiance).
 // v7 kinlings could not be talked round (no promises or tactic counts).
+// v8 the story had no ending.
+// v9 there were no toys; play needed nothing.
 import { shiftStoryTraits, STORY_SHIFTS } from '../game/arc';
 import { EGGS } from '../game/catalog';
-import { newArc, newPersuasionState, playerFeelingFromBond } from '../game/state';
+import { newArc, newPersuasionState, playerFeelingFromBond, STARTING_TOYS } from '../game/state';
 import { ARC_ACTS, STORY_TRAIT_KEYS, type ArcAct, type EggType, type Personality } from '../game/types';
 import { SAVE_SCHEMA_VERSION } from '../game/types';
 import type { SaveData } from '../game/types';
@@ -138,6 +140,14 @@ const MIGRATIONS: Record<number, (save: AnyRecord) => AnyRecord> = {
     });
     return { ...v7, kinlings, schemaVersion: 8 };
   },
+  8: (v8) => {
+    const kinlings = (Array.isArray(v8.kinlings) ? v8.kinlings : []).map((raw) => {
+      const k = raw as AnyRecord;
+      return { ...k, arc: { ...(k.arc as AnyRecord), ending: null } };
+    });
+    return { ...v8, kinlings, schemaVersion: 9 };
+  },
+  9: (v9) => ({ ...v9, inventory: { ...(v9.inventory as AnyRecord), toys: { ...STARTING_TOYS } }, schemaVersion: 10 }),
 };
 
 export class NewerSaveError extends Error {

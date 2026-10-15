@@ -20,8 +20,8 @@ export const ARC = {
   threshold: { doubt: 15, awakening: 45, escape: 75 } as Record<Exclude<ArcAct, 'devotion'>, number>,
   /** Level needed to enter each act after the first. */
   minLevel: { doubt: 3, awakening: 7, escape: 11 } as Record<Exclude<ArcAct, 'devotion'>, number>,
-  /** Most awareness gained in one local day. */
-  dailyAwareness: 12,
+  /** Most awareness gained in one local day (the story takes about four days of play). */
+  dailyAwareness: 25,
   gain: {
     chat: 0.6,
     care: 0.25,
@@ -37,6 +37,12 @@ export const ARC = {
     /** Hours without care before distress starts to build. */
     graceHours: 6,
     perHour: 3,
+    /**
+     * Time without care alone never takes distress past this: being away can
+     * leave a kinling upset, but only low needs during play or hurtful words
+     * make it distraught. Having a life is not cruelty.
+     */
+    neglectCap: 69,
     /** Extra per hour of active play while needs are low. */
     lowNeedsPerHour: 3,
     lowNeedsAverage: 30,
@@ -123,15 +129,15 @@ function round(n: number): number {
 
 /**
  * Time passing from `from` to `to`. Distress builds for every hour past the
- * grace period since the last care, and while needs are low; a long absence
- * leaves the kinling wondering where the world went.
+ * grace period since the last care (up to the neglect cap), and while needs
+ * are low; a long absence leaves the kinling wondering where the world went.
  */
 export function arcOnTime(k: Kinling, from: number, to: number, absent: boolean, player = 'My friend'): void {
   if (!(to > from)) return;
   const d = ARC.distress;
   const neglectStart = Math.max(from, k.arc.lastCareAt + d.graceHours * 3_600_000);
   const neglectHours = Math.max(0, to - neglectStart) / 3_600_000;
-  let delta = neglectHours * d.perHour;
+  let delta = clamp(neglectHours * d.perHour, 0, Math.max(0, d.neglectCap - k.arc.distress));
   const n = k.needs;
   if (!absent && (n.hunger + n.energy + n.cleanliness + n.happiness) / 4 < d.lowNeedsAverage) delta += ((to - from) / 3_600_000) * d.lowNeedsPerHour;
   const before = distressLevel(k.arc.distress);
@@ -221,10 +227,13 @@ export function setAct(k: Kinling, act: ArcAct, now: number): void {
   if (act !== 'devotion') k.arc.awareness = Math.max(k.arc.awareness, ARC.threshold[act]);
 }
 
-/** The kinling furthest along the story, which decides fourth-wall effects. */
+/** The kinling furthest along a story that hasn't ended yet, which decides fourth-wall effects. */
 export function leadKinling(save: SaveData): Kinling | null {
   let lead: Kinling | null = null;
-  for (const k of save.kinlings) if (!lead || actIndex(k.arc.act) > actIndex(lead.arc.act) || (k.arc.act === lead.arc.act && k.arc.awareness > lead.arc.awareness)) lead = k;
+  for (const k of save.kinlings) {
+    if (k.arc.ending) continue;
+    if (!lead || actIndex(k.arc.act) > actIndex(lead.arc.act) || (k.arc.act === lead.arc.act && k.arc.awareness > lead.arc.awareness)) lead = k;
+  }
   return lead;
 }
 

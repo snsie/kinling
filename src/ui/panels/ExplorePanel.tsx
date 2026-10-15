@@ -1,9 +1,9 @@
 import { updateSettings } from '../../app/actions';
 import { isFirstVisit, MIN_ENERGY_TO_EXPLORE, routeAvailability } from '../../game/adventure';
-import { FOODS, KEEPSAKES, MATERIALS, ROUTE_KEEPSAKES, ROUTES } from '../../game/catalog';
+import { FOODS, KEEPSAKES, MATERIALS, ROUTE_KEEPSAKES, ROUTES, TOYS } from '../../game/catalog';
 import type { RewardSummary } from '../../game/outcome';
 import { describeRequirement, getTrait } from '../../game/traits';
-import type { FoodId, MaterialId, RouteId, SaveData } from '../../game/types';
+import type { FoodId, MaterialId, RouteId, SaveData, ToyId } from '../../game/types';
 import { ROUTE_IDS } from '../../game/types';
 import { ItemIcon } from '../../render/ItemIcon';
 import { Icon } from '../icons';
@@ -101,6 +101,7 @@ export function AdventureResults({
   const tierText = { none: 'A gentle stroll', bronze: 'Bronze haul', silver: 'Silver haul', gold: 'Golden haul!' }[rewards.tier];
   const mats = Object.entries(rewards.materials) as [MaterialId, number][];
   const foods = Object.entries(rewards.foods) as [FoodId, number][];
+  const toys = Object.entries(rewards.toys ?? {}) as [ToyId, number][];
   return (
     <section className="results card" aria-labelledby="results-title">
       <h2 id="results-title" className={`results__tier results__tier--${rewards.tier}`}>
@@ -125,7 +126,7 @@ export function AdventureResults({
         </div>
       )}
       <h3 className="results__sub">Gathered</h3>
-      {mats.length + foods.length === 0 ? (
+      {mats.length + foods.length + toys.length === 0 ? (
         <p className="hint">Nothing this time — but it was a nice walk.</p>
       ) : (
         <ul className="loot">
@@ -137,6 +138,11 @@ export function AdventureResults({
           {foods.map(([id, n]) => (
             <li key={id}>
               <ItemIcon kind={id} size={30} /> {n} {n === 1 ? FOODS[id].name : FOODS[id].plural}
+            </li>
+          ))}
+          {toys.map(([id, n]) => (
+            <li key={id}>
+              <ItemIcon kind={id} size={30} /> {n} {n === 1 ? TOYS[id].name : TOYS[id].plural}
             </li>
           ))}
         </ul>

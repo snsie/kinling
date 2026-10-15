@@ -6,6 +6,7 @@ import { useRoom } from '../app/room';
 import { useUi } from '../app/ui';
 import { TOPIC_LABELS, isTopic } from '../game/chatter';
 import { EGG_LEVEL, eggWaiting } from '../game/eggs';
+import { isQuiet } from '../game/ending';
 import { deriveMood } from '../game/needs';
 import { lifeStageFor } from '../game/stage';
 import { activeKinling } from '../game/state';
@@ -97,7 +98,7 @@ export function RoomView({ save, reducedMotion }: { save: SaveData; reducedMotio
       const k = byId.get(p.id);
       if (!k) return '';
       const near = furnitureNear(p.x, p.y);
-      const doing = p.mode === 'resting' ? 'is napping' : p.mode === 'talking' ? 'is chatting' : p.mode === 'walkTo' ? 'is walking' : 'is resting a moment';
+      const doing = isQuiet(k) ? 'is quiet and still' : p.mode === 'resting' ? 'is napping' : p.mode === 'talking' ? 'is chatting' : p.mode === 'walkTo' ? 'is walking' : 'is resting a moment';
       return `${k.name} ${doing}${near ? ` by the ${FURNITURE_BY_ID.get(near)!.label}` : ''}.`;
     })
     .join(' ');
@@ -114,7 +115,8 @@ export function RoomView({ save, reducedMotion }: { save: SaveData; reducedMotio
             if (!k) return null;
             const pos = snap(p, reducedMotion);
             const isActive = k.id === active.id;
-            const tokenAnim = isActive && anim !== 'idle' ? anim : p.mode === 'resting' ? 'sleeping' : 'idle';
+            const quiet = isQuiet(k);
+            const tokenAnim = quiet ? 'idle' : isActive && anim !== 'idle' ? anim : p.mode === 'resting' ? 'sleeping' : 'idle';
             return (
               <KinlingToken
                 key={k.id}
@@ -130,6 +132,7 @@ export function RoomView({ save, reducedMotion }: { save: SaveData; reducedMotio
                 moving={p.mode === 'walkTo' && !reducedMotion}
                 selected={isActive && save.kinlings.length > 1}
                 reducedMotion={reducedMotion}
+                quiet={quiet}
                 onSelect={chooseKinling}
               />
             );

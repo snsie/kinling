@@ -146,7 +146,7 @@ describe('lab story controls', () => {
     const a = api(freshSession({ egg: 'woodland', name: 'Pip', player: 'Ana', personality: base }, Date.now()));
     passTime(a, 30);
     const k = labKinling(a.get());
-    expect(k.arc.distress).toBeGreaterThanOrEqual(70);
+    expect(k.arc.distress).toBeGreaterThanOrEqual(45);
     expect(a.get().clockOffset).toBe(30 * HOUR);
     expect(a.get().turns.some((t) => t.event?.includes('pass with no care'))).toBe(true);
     labCare(a, 'groom');

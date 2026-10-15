@@ -5,7 +5,7 @@ import { distressLevel } from './arc';
 import { FOODS, KEEPSAKES, ROUTES } from './catalog';
 import type { Mood } from './needs';
 import { deriveMood } from './needs';
-import type { ArcAct, FoodId, Kinling, KeepsakeId, RouteId, SaveData } from './types';
+import type { ArcAct, FoodId, Kinling, KeepsakeId, RouteId, SaveData, ToyId } from './types';
 import { ruleAppraisal } from './appraisal';
 import { isRepair } from './conversation';
 import { factItems, recall } from './recall';
@@ -83,6 +83,11 @@ const FEED_LINES = {
 const GROOM_LINES = ['Ooh, that tickles! I feel so fluffy now.', 'Brush brush brush... I\'m sparkling!', 'Ahh, all the burrs are gone. Thank you!'];
 const REST_LINES = ['*curls up* Just a little nap...', 'Zzz... wake me if anything exciting happens.', 'Cozy blanket time. Mmm.'];
 const PLAY_LINES = ['Wheee! Again, again!', 'Catch me if you can!', 'Boing! Did you see how high I jumped?'];
+const TOY_LINES: Record<ToyId, string[]> = {
+  ball: ['Got it! Got it! Throw it again!', 'I caught it before it stopped bouncing!', 'Wheee! That one went so far!'],
+  featherWand: ['Pounce! ...I almost had it!', 'The feathers are so tickly!', 'I got it! I got the feathery thing!'],
+  bubbleWand: ['Pop! Pop! Pop! I got them all!', 'The bubbles look like tiny rainbows!', 'One landed on my nose! Pop!'],
+};
 const TOO_TIRED = ['I\'m too sleepy to play right now... maybe a nap first?', 'My legs feel like jelly. Can we rest a bit?'];
 
 const DIMINISHED = ' (It\'s a little less exciting the third time in a row.)';
@@ -109,6 +114,10 @@ export function feedLine(kind: keyof typeof FEED_LINES, food: FoodId, rand: Rand
 export function careLine(action: 'groom' | 'rest' | 'play', diminished: boolean, rand: Rand = Math.random): string {
   const table = action === 'groom' ? GROOM_LINES : action === 'rest' ? REST_LINES : PLAY_LINES;
   return pick(table, rand) + (diminished ? DIMINISHED : '');
+}
+
+export function playLine(toy: ToyId, diminished: boolean, rand: Rand = Math.random): string {
+  return pick(TOY_LINES[toy] ?? PLAY_LINES, rand) + (diminished ? DIMINISHED : '');
 }
 
 export function tooTiredLine(rand: Rand = Math.random): string {

@@ -25,13 +25,15 @@ export interface KinlingTokenProps {
   moving: boolean;
   selected: boolean;
   reducedMotion: boolean;
+  /** Let go at the end of its story: drawn faded and perfectly still. */
+  quiet?: boolean;
   onSelect: (id: string) => void;
 }
 
 export const KinlingToken = memo(function KinlingToken(p: KinlingTokenProps) {
   return (
     <g
-      className={`token ${p.selected ? 'token--selected' : ''} ${p.reducedMotion ? 'token--hop' : ''}`}
+      className={`token ${p.selected ? 'token--selected' : ''} ${p.reducedMotion ? 'token--hop' : ''} ${p.quiet ? 'token--quiet' : ''}`}
       style={{ transform: `translate(${p.x * TILE}px, ${p.y * TILE}px)` }}
       onClick={() => p.onSelect(p.id)}
       data-kinling={p.id}

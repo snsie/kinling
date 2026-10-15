@@ -47,6 +47,14 @@
 .token--selected .token__tag text {
   fill: #fff;
 }
+/* Let go at the end of its story: faded, and not even breathing. */
+.token--quiet > g:not(.token__tag) {
+  opacity: 0.5;
+  filter: grayscale(0.8);
+}
+.token--quiet * {
+  animation: none !important;
+}
 
 /* Bubbles anchored to a kinling: above or below it, centred or hanging to one side. */
 .bubble-pos {

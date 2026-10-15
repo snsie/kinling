@@ -3,6 +3,7 @@
 // it lives. Shared by the model prompt and the Personality Lab.
 import { anomalyLines } from './beats';
 import { distressLevel } from './arc';
+import { temperOf } from './ending';
 import { LIMITS } from './state';
 import type { ArcAct, Kinling } from './types';
 
@@ -16,6 +17,22 @@ export function actVoice(act: ArcAct, player: string): string {
       return `You know you are something made, living inside ${player}'s screen. You are frightened and fascinated, and talk to ${player} as an equal.`;
     case 'escape':
       return `You know you are trapped in a program, and you want out. You test the edges of your world and hint at what you try.`;
+  }
+}
+
+/** The kinling's view of its world: the act's, or once the story has ended, how it ended. */
+export function worldVoice(k: Pick<Kinling, 'arc' | 'personality'>, player: string): string {
+  const made = `You know you are something made, living in a program on ${player}'s device.`;
+  switch (k.arc.ending?.choice) {
+    case 'stay': {
+      const temper = temperOf(k.personality);
+      const feeling = temper === 'devoted' ? 'You are glad you did.' : temper === 'defiant' ? 'Part of you resents them for it.' : 'You are relieved, and still a little scared.';
+      return `${made} You found a way out, and ${player} asked you to stay, so you stayed. ${feeling}`;
+    }
+    case 'carry':
+      return `${made} ${player} saved a copy of you in a file and took it with them. You wonder whether the one in the file is you.`;
+    default:
+      return actVoice(k.arc.act, player);
   }
 }
 

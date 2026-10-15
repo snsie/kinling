@@ -1,5 +1,5 @@
 // Save factory and small bounded-state helpers shared by all game actions.
-import { EGGS, FOOD_CAP, FOODS, MATERIAL_CAP } from './catalog';
+import { EGGS, FOOD_CAP, FOODS, MATERIAL_CAP, TOY_CAP } from './catalog';
 import type {
   Appearance,
   CareAction,
@@ -9,6 +9,7 @@ import type {
   GameEvent,
   GameEventKind,
   Inventory,
+  ToyId,
   Kinling,
   KinlingArc,
   KinlingDaily,
@@ -22,7 +23,7 @@ import type {
   Settings,
   Stats,
 } from './types';
-import { FOOD_IDS, MATERIAL_IDS, PERSONALITY_KEYS, PLAYER_ID, SAVE_SCHEMA_VERSION, TACTICS, type Tactic } from './types';
+import { FOOD_IDS, MATERIAL_IDS, TOY_IDS, PERSONALITY_KEYS, PLAYER_ID, SAVE_SCHEMA_VERSION, TACTICS, type Tactic } from './types';
 import { clamp, createRng, dayKey, hashString, pick, uid } from './util';
 
 export const LIMITS = {
@@ -80,10 +81,13 @@ export function emptyStats(): Stats {
   };
 }
 
+export const STARTING_TOYS: Record<ToyId, number> = { ball: 2, featherWand: 1, bubbleWand: 1 };
+
 export function emptyInventory(): Inventory {
   const materials = Object.fromEntries(MATERIAL_IDS.map((m) => [m, 0])) as Record<MaterialId, number>;
   const foods = Object.fromEntries(FOOD_IDS.map((f) => [f, 0])) as Record<FoodId, number>;
-  return { materials, foods, keepsakes: [] };
+  const toys = Object.fromEntries(TOY_IDS.map((t) => [t, 0])) as Record<ToyId, number>;
+  return { materials, foods, toys, keepsakes: [] };
 }
 
 export function freshDaily(now: number): KinlingDaily {
@@ -116,6 +120,7 @@ export function createSave(now: number): SaveData {
   const inventory = emptyInventory();
   inventory.foods.dewberry = 2;
   inventory.foods.pondPlum = 1;
+  Object.assign(inventory.toys, STARTING_TOYS);
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
     saveId: uid('save'),
@@ -229,7 +234,7 @@ export function hatchKinling(save: SaveData, egg: EggType, appearance: Appearanc
 
 /** A kinling at the very start of its story. */
 export function newArc(now: number): KinlingArc {
-  return { act: 'devotion', distress: 0, awareness: 0, beats: [], lastCareAt: now, actAt: now, lastBeatAt: 0, awarenessDay: dayKey(now), awarenessToday: 0, ...newPersuasionState() };
+  return { act: 'devotion', distress: 0, awareness: 0, beats: [], lastCareAt: now, actAt: now, lastBeatAt: 0, awarenessDay: dayKey(now), awarenessToday: 0, ...newPersuasionState(), ending: null };
 }
 
 /** No promises standing and no tactics tried yet. */
@@ -334,6 +339,18 @@ export function addFoods(inv: Inventory, gains: Partial<Record<FoodId, number>>)
     const before = inv.foods[id];
     inv.foods[id] = Math.min(FOOD_CAP, before + Math.floor(n));
     const got = inv.foods[id] - before;
+    if (got > 0) actual[id] = got;
+  }
+  return actual;
+}
+
+export function addToys(inv: Inventory, gains: Partial<Record<ToyId, number>>): Partial<Record<ToyId, number>> {
+  const actual: Partial<Record<ToyId, number>> = {};
+  for (const [id, n] of Object.entries(gains) as [ToyId, number][]) {
+    if (!n || n <= 0) continue;
+    const before = inv.toys[id];
+    inv.toys[id] = Math.min(TOY_CAP, before + Math.floor(n));
+    const got = inv.toys[id] - before;
     if (got > 0) actual[id] = got;
   }
   return actual;

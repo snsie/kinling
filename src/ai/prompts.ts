@@ -2,7 +2,7 @@
 // game state; the model never relies on remembering earlier sessions. What the
 // kinling remembers is chosen by recall (src/game/recall.ts) for each message.
 import type { ChatCompletionMessageParam } from '@mlc-ai/web-llm';
-import { COLORS, FOODS, KEEPSAKES, MATERIALS, ROUTES } from '../game/catalog';
+import { COLORS, FOODS, KEEPSAKES, MATERIALS, ROUTES, TOYS } from '../game/catalog';
 import { routeAvailability } from '../game/adventure';
 import { FEELINGS, retold } from '../game/appraisal';
 import { deriveMood, MOOD_TEXT } from '../game/needs';
@@ -14,12 +14,12 @@ import { canWriteDiary, CHAT_CONTEXT_MESSAGES } from '../game/social';
 import { INTENTS, type ReplyBudget } from '../game/intent';
 import { describeAppearance, TRAITS, wornTraits } from '../game/traits';
 import type { ChatMessage, FoodId, GameEvent, Kinling, MaterialId, SaveData } from '../game/types';
-import { ROUTE_IDS } from '../game/types';
+import { ROUTE_IDS, TOY_IDS } from '../game/types';
 import { KEEP_SLOTS } from '../game/evolution';
 import { distressLevel } from '../game/arc';
 import { persuasionNote, TACTIC_DEFS } from '../game/persuasion';
 import { TACTICS } from '../game/types';
-import { actVoice, distressText, knownFacts, outsideWorldRule, strangeThings, voiceExamples } from '../game/storyVoice';
+import { distressText, knownFacts, outsideWorldRule, strangeThings, voiceExamples, worldVoice } from '../game/storyVoice';
 import { answersQuestion, chatBefore, inVisibleChat, isRepair, priorExchange } from '../game/conversation';
 import { modelName } from './models';
 
@@ -73,7 +73,8 @@ export function availableActivities(save: SaveData): string[] {
   const foods = (Object.keys(FOODS) as FoodId[]).filter((f) => FOODS[f].unlimited || save.inventory.foods[f] > 0).map((f) => FOODS[f].name);
   if (c.needs.hunger < 95) list.push(`eat a snack (${foods.join(', ')})`);
   list.push('get brushed', 'take a nap');
-  if (c.needs.energy >= 10) list.push('play chase');
+  const toys = TOY_IDS.filter((t) => save.inventory.toys[t] > 0).map((t) => TOYS[t].name.toLowerCase());
+  if (c.needs.energy >= 10 && toys.length) list.push(`play with a toy (${toys.join(', ')})`);
   for (const r of ROUTE_IDS) {
     const a = routeAvailability(save, r, c);
     if (a.available) list.push(`explore the ${ROUTES[r].name}`);
@@ -87,9 +88,11 @@ export function availableActivities(save: SaveData): string[] {
 function inventoryLine(save: SaveData): string {
   const foods = (Object.keys(FOODS) as FoodId[]).filter((f) => !FOODS[f].unlimited && save.inventory.foods[f] > 0).map((f) => `${save.inventory.foods[f]} ${FOODS[f].name}`);
   const mats = (Object.keys(MATERIALS) as MaterialId[]).filter((m) => save.inventory.materials[m] > 0).map((m) => `${save.inventory.materials[m]} ${MATERIALS[m].plural.toLowerCase()}`);
+  const toys = TOY_IDS.filter((t) => save.inventory.toys[t] > 0).map((t) => `${save.inventory.toys[t]} ${TOYS[t].name}`);
   const keeps = save.inventory.keepsakes.map((k) => KEEPSAKES[k.id].name);
   return [
     `Snacks: seed buns (always)${foods.length ? ', ' + foods.join(', ') : ''}.`,
+    toys.length ? `Toys (each used up by one game): ${toys.join(', ')}.` : 'Toys: none left; more turn up while exploring.',
     mats.length ? `Materials: ${mats.join(', ')}.` : 'Materials: none yet.',
     keeps.length ? `Keepsakes on the shelf: ${keeps.join(', ')}.` : 'Keepsakes: none yet.',
   ].join(' ');
@@ -176,7 +179,7 @@ export function creatureSystemPrompt(save: SaveData, query: string, now: number,
   return [
     `You are ${c.name}, a kinling: a small creature from a ${c.egg} egg, living in a hollow under an old tree${others.length ? ` with ${others.join(' and ')}` : ''}. You are talking with ${player}.`,
     `You are ${personalityVoice(c.personality, player).join(', ')}, and ${STAGE_VOICE[stage]}.`,
-    `${actVoice(c.arc.act, player)}${facts.length ? ` ${facts.join(' ')}` : ''}`,
+    `${worldVoice(c, player)}${facts.length ? ` ${facts.join(' ')}` : ''}`,
     strange.length ? `Strange things you noticed:\n${strange.map((t) => `- ${t}`).join('\n')}` : '',
     feeling,
     growth.length ? `Lately: ${growth.join(' ')}` : '',
@@ -294,7 +297,7 @@ export function diaryMessages(save: SaveData, events: GameEvent[]): ChatCompleti
       role: 'system',
       content: [
         `You are ${c.name}, a small kinling writing in your diary. Personality: ${personalityWords(c.personality).join(', ')}.`,
-        `Your world: ${actVoice(c.arc.act, save.player.name ?? 'your friend')}`,
+        `Your world: ${worldVoice(c, save.player.name ?? 'your friend')}`,
         `How you feel: ${distressText(c.arc.distress, c.arc.act, save.player.name ?? 'your friend')}`,
         'Write 2 or 3 short sentences (under 60 words) in first person, specific and honest.',
         'Use ONLY the events listed. Do not add new events, items or places. Plain text, no lists, no emojis.',

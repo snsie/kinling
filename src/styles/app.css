@@ -1168,8 +1168,11 @@ input[type='range']:disabled {
   gap: var(--sp-3);
 }
 @container home (min-width: 600px) {
+  /* One row however many meters there are (the four needs, plus Calm once known). */
   .needs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 10px;
   }
   /* Narrower tiles: icon and status share the top row, the label gets the full width. */
@@ -1192,7 +1195,22 @@ input[type='range']:disabled {
     text-align: right;
   }
 }
+/* Five tiles in one row get narrow: stack the status under the label so it never meets the icon. */
+@container meter (max-width: 150px) {
+  .meter .meter__head {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'icon' 'label' 'status';
+    row-gap: 6px;
+  }
+  .meter .meter__status {
+    justify-self: start;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
 .meter {
+  container: meter / inline-size;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1398,6 +1416,165 @@ input[type='range']:disabled {
 .food-btn__count {
   font-size: 0.8rem;
   color: var(--ink-soft);
+}
+.food-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.food-picker__note {
+  flex-basis: 100%;
+  margin: 2px 4px 0;
+}
+
+/* Play tasks: throw the ball, wave the feather wand, pop bubbles. */
+.play-task {
+  display: grid;
+  gap: 12px;
+  margin-top: var(--sp-3);
+  padding: 12px 14px 14px;
+  border-radius: 20px;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--highlight), 0 0 0 1px rgba(120, 82, 48, 0.07), var(--shadow-1);
+  animation: tray-in var(--dur-3) var(--ease-out);
+}
+.play-task__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.play-task__text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.play-task__hint {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+.play-ball,
+.play-feather,
+.play-bubbles {
+  display: grid;
+  gap: 10px;
+}
+.play-ball__field,
+.play-feather__pad,
+.play-bubbles__pond {
+  position: relative;
+  height: 76px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(140, 198, 106, 0.28));
+  box-shadow: inset 0 0 0 1px rgba(120, 82, 48, 0.1);
+}
+.play-ball__ball {
+  position: absolute;
+  bottom: 8px;
+  transform: translateX(-50%);
+  transition: left 1s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.play-ball__ball--thrown .item-icon {
+  animation: ball-hop 1s cubic-bezier(0.3, 0.6, 0.4, 1);
+}
+@keyframes ball-hop {
+  0% { transform: translateY(0) rotate(0); }
+  35% { transform: translateY(-46px) rotate(220deg); }
+  70% { transform: translateY(0) rotate(400deg); }
+  85% { transform: translateY(-10px) rotate(480deg); }
+  100% { transform: translateY(0) rotate(540deg); }
+}
+.play-ball__power {
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, rgba(120, 82, 48, 0.12) 80%, rgba(242, 122, 94, 0.25) 80%);
+  box-shadow: inset 0 1px 2px rgba(74, 45, 20, 0.14);
+  overflow: hidden;
+}
+.play-ball__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--meter-hunger);
+}
+.play-ball__btn {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.play-feather__pad {
+  cursor: grab;
+  touch-action: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(180, 140, 224, 0.25));
+}
+.play-feather__pad:focus-visible {
+  outline: 3px solid var(--coral-strong);
+  outline-offset: 2px;
+}
+.play-feather__wand {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-12deg);
+  transition: left 0.12s linear;
+  pointer-events: none;
+}
+.play-feather__wand--caught {
+  animation: pop-in var(--dur-3) var(--ease-spring);
+}
+.play-bubbles__pond {
+  height: 120px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(79, 159, 198, 0.25));
+}
+.play-bubble {
+  position: absolute;
+  bottom: 10px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(79, 159, 198, 0.75);
+  background: radial-gradient(circle at 32% 30%, #fff 0 14%, rgba(221, 243, 251, 0.55) 16% 100%);
+  cursor: pointer;
+  transform: translateX(-50%);
+  animation: bubble-rise linear infinite both;
+}
+.play-bubble:focus-visible {
+  outline: 3px solid var(--coral-strong);
+  outline-offset: 2px;
+}
+.play-bubble--popped {
+  visibility: hidden;
+}
+html.reduce-motion .play-bubble {
+  bottom: 40px;
+  animation: none !important;
+}
+@keyframes bubble-rise {
+  0% { transform: translate(-50%, 20px); opacity: 0; }
+  12% { opacity: 1; }
+  50% { transform: translate(calc(-50% + 8px), -30px); }
+  88% { opacity: 1; }
+  100% { transform: translate(-50%, -90px); opacity: 0; }
+}
+.play-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.play-dots li {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(120, 82, 48, 0.15);
+  transition: background-color var(--dur-2);
+}
+.play-dots li.is-done {
+  background: var(--meter-happy);
 }
 
 /* =====================================================================
@@ -3578,6 +3755,41 @@ html.reduce-motion *::after {
 }
 .story-about p {
   color: var(--ink-soft);
+}
+/* The end of a kinling's story: the choice, and the closing lines. */
+.ending {
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--coral-soft);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  animation: tray-in var(--dur-3) var(--ease-out);
+}
+.ending h3 {
+  margin: 0 0 var(--sp-2);
+}
+.ending p {
+  margin: 0 0 var(--sp-2);
+}
+.ending__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.ending--closing {
+  border-color: var(--line);
+}
+.ending--closing summary {
+  cursor: pointer;
+  font-weight: 700;
+  margin-bottom: var(--sp-2);
+}
+.ending--closing p {
+  color: var(--ink-soft);
+}
+.ending__question {
+  color: var(--ink) !important;
+  font-style: italic;
 }
 .story-whisper {
   color: var(--coral-ink);

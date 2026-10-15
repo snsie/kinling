@@ -1,10 +1,10 @@
-// Procedural SVG icons for materials, foods, keepsakes and the golden find.
+// Procedural SVG icons for materials, foods, toys, keepsakes and the golden find.
 // Every glyph is drawn inside a 32x32 box with flat fills (no gradients), so
 // many copies can live on one page without id clashes.
 import type { JSX } from 'react';
-import type { FoodId, KeepsakeId, MaterialId } from '../game/types';
+import type { FoodId, KeepsakeId, MaterialId, ToyId } from '../game/types';
 
-export type ItemKind = MaterialId | FoodId | KeepsakeId | 'golden';
+export type ItemKind = MaterialId | FoodId | ToyId | KeepsakeId | 'golden';
 
 const LINE = { strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
@@ -390,6 +390,41 @@ function Golden() {
   );
 }
 
+function Ball() {
+  return (
+    <g {...LINE}>
+      <ellipse cx="16" cy="28" rx="8.5" ry="1.8" fill="#000" opacity="0.08" />
+      <circle cx="16" cy="15.5" r="11" fill="#F27A5E" stroke="#B5462F" strokeWidth="1.6" />
+      <path d="M5.4 12.6 C10.5 15.8 21.5 15.8 26.6 12.6 M6 19.6 C11 22.8 21 22.8 26 19.6" stroke="#FFF1D6" strokeWidth="2.4" fill="none" />
+      <path d="M9.8 8.6 C11.4 6.8 13.4 5.8 15.6 5.5" stroke="#FFD2C2" strokeWidth="1.8" fill="none" />
+    </g>
+  );
+}
+
+function FeatherWand() {
+  return (
+    <g {...LINE}>
+      <path d="M5 28.5 L17.5 14" stroke="#9C6A3C" strokeWidth="2.2" />
+      <path d="M17.5 14 C17 8.5 20.5 4 27 3.5 C27.5 10 23.5 14.5 17.5 14Z" fill="#B48CE0" stroke="#6F4CA6" strokeWidth="1.4" />
+      <path d="M17.5 14 C14.5 10 15 5.5 18.5 3.5 C20.5 7.5 20 11 17.5 14Z" fill="#F7A9C0" stroke="#C9668A" strokeWidth="1.2" />
+      <path d="M17.8 13.6 C21 10 23.5 7.5 26 4.6" stroke="#6F4CA6" strokeWidth="1" fill="none" />
+      <circle cx="17.5" cy="14" r="1.6" fill="#F6C945" stroke="#B98A1F" strokeWidth="0.9" />
+    </g>
+  );
+}
+
+function BubbleWand() {
+  return (
+    <g {...LINE}>
+      <path d="M6 28 L14.6 16.4" stroke="#4F9FC6" strokeWidth="2.2" />
+      <circle cx="17.5" cy="12.5" r="5" fill="#DDF3FB" fillOpacity="0.6" stroke="#4F9FC6" strokeWidth="1.8" />
+      <circle cx="25" cy="22" r="3.6" fill="#E8F7FD" fillOpacity="0.7" stroke="#7FC0DD" strokeWidth="1.2" />
+      <circle cx="26.5" cy="6.5" r="2.4" fill="#E8F7FD" fillOpacity="0.7" stroke="#7FC0DD" strokeWidth="1.1" />
+      <path d="M15.2 10.6 C15.8 9.6 16.8 9 17.8 8.9 M23.6 20.8 C24 20.2 24.5 19.9 25.1 19.8" stroke="#fff" strokeWidth="1.2" fill="none" />
+    </g>
+  );
+}
+
 const GLYPHS: Record<ItemKind, () => JSX.Element> = {
   leaf: Leaf,
   petal: Petal,
@@ -404,6 +439,9 @@ const GLYPHS: Record<ItemKind, () => JSX.Element> = {
   pondPlum: PondPlum,
   cress: Cress,
   starDrop: StarDrop,
+  ball: Ball,
+  featherWand: FeatherWand,
+  bubbleWand: BubbleWand,
   'first-acorn': Acorn,
   'ladybug-button': LadybugButton,
   'four-leaf-clover': FourLeafClover,

@@ -3,6 +3,7 @@
 // been changing. Shared by the model prompt, offline replies and the UI.
 import { lifetimeGrowth, recentReflections, growthPhrase } from './appraisal';
 import { TOPIC_LABELS, isTopic } from './chatter';
+import { isQuiet } from './ending';
 import { feelingVerb } from './feelings';
 import { whenLabel } from './recall';
 import { feelingOf, kinlingById, personalityWords, playerFeelingFromBond } from './state';
@@ -71,6 +72,7 @@ export function siblingLines(save: SaveData, k: Kinling, now: number): string[] 
       const said = last.lines.find((l) => l.speaker === other.id)?.text;
       line += ` You last talked ${whenLabel(last.at, now)}, about ${topic}${said ? ` (${other.name} said: "${said}")` : ''}.`;
     }
+    if (isQuiet(other)) line += ` ${other.name} has gone quiet and does not answer anyone anymore.`;
     lines.push(line);
   }
   return lines;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chatMessages, creatureSystemPrompt } from '../src/ai/prompts';
-import { advanceAct, ARC, arcChat, arcOnCare, arcOnTime, gainAwareness, leadKinling, setAct } from '../src/game/arc';
+import { advanceAct, ARC, arcChat, arcOnCare, arcOnTime, distressLevel, gainAwareness, leadKinling, setAct } from '../src/game/arc';
 import { anomalyLines, nextBeat, playBeat, playedEffects, beatById, type ArcEnv, type BeatContext } from '../src/game/beats';
 import { performCare, tick } from '../src/game/care';
 import { greetingLine } from '../src/game/dialogue';
@@ -35,9 +35,9 @@ describe('story rules', () => {
     arcOnTime(k, T0 + ARC.distress.graceHours * HOUR, T0 + (ARC.distress.graceHours + 10) * HOUR, true);
     expect(k.arc.distress).toBe(10 * ARC.distress.perHour);
     arcOnTime(k, T0, T0 + 200 * HOUR, true);
-    expect(k.arc.distress).toBe(100);
+    expect(k.arc.distress).toBe(ARC.distress.neglectCap);
     arcOnCare(k, T0 + 200 * HOUR);
-    expect(k.arc.distress).toBe(100 - ARC.distress.careRelief);
+    expect(k.arc.distress).toBe(ARC.distress.neglectCap - ARC.distress.careRelief);
     expect(k.arc.lastCareAt).toBe(T0 + 200 * HOUR);
   });
 
@@ -72,14 +72,30 @@ describe('story rules', () => {
     expect(advanceAct(s, k, T0)).toBeNull();
   });
 
-  it('a long absence leaves the kinling distressed and wondering, through the game tick', () => {
+  it('a long absence leaves the kinling upset and wondering, through the game tick', () => {
     const s = hatchedSave();
     const k = kin(s);
     k.arc.lastCareAt = s.lastTickAt;
     const out = tick(s, s.lastTickAt + 30 * HOUR);
     const after = kin(out.save);
-    expect(after.arc.distress).toBeGreaterThanOrEqual(70);
+    expect(distressLevel(after.arc.distress)).toBe('upset');
     expect(after.arc.awareness).toBeGreaterThan(0);
+  });
+
+  it('time away alone never makes it distraught; hurtful words and low needs during play still can', () => {
+    const s = hatchedSave();
+    const k = kin(s);
+    k.arc.lastCareAt = T0;
+    arcOnTime(k, T0, T0 + 500 * HOUR, true);
+    expect(distressLevel(k.arc.distress)).toBe('upset');
+    const hurt = arcChat(s, k.id, 'you are stupid and I hate you', T0 + 500 * HOUR);
+    expect(distressLevel(kin(hurt).arc.distress)).toBe('distraught');
+    const low = hatchedSave();
+    const l = kin(low);
+    l.arc.lastCareAt = T0;
+    l.needs = { hunger: 5, energy: 5, cleanliness: 5, happiness: 5 };
+    arcOnTime(l, T0, T0 + 30 * HOUR, false);
+    expect(distressLevel(l.arc.distress)).toBe('distraught');
   });
 
   it('every care action calms the kinling', () => {
@@ -220,7 +236,12 @@ describe('story traits', () => {
     const s = hatchedSave();
     kin(s).arc.lastCareAt = s.lastTickAt;
     const k = kin(tick(s, s.lastTickAt + 30 * HOUR).save);
-    expect(k.arc.distress).toBeGreaterThanOrEqual(70);
+    expect(distressLevel(k.arc.distress)).toBe('upset');
+    expect(k.personality).toMatchObject({ devotion: 72 - 3, fear: 15 + 3, defiance: 8 });
+    // Only low needs while the player is there take it further.
+    k.needs = { hunger: 5, energy: 5, cleanliness: 5, happiness: 5 };
+    arcOnTime(k, T0 + 30 * HOUR, T0 + 32 * HOUR, false);
+    expect(distressLevel(k.arc.distress)).toBe('distraught');
     expect(k.personality).toMatchObject({ devotion: 72 - 3 - 2, fear: 15 + 3 + 3, defiance: 8 + 2 });
   });
 

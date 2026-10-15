@@ -6,17 +6,19 @@ import { appraiseMessage, chatReply, greet, reactTo, routeMessage, suggestFact, 
 import { resolveAdventure, type AdventureOutcome } from '../game/adventure';
 import { applyAppraisal, growthPhrase, pendingAppraisals, reflect, shouldReflect } from '../game/appraisal';
 import { arcChat } from '../game/arc';
-import { performCare } from '../game/care';
+import { firstToy, performCare } from '../game/care';
+import { carryNote, chooseEnding, isQuiet } from '../game/ending';
 import { checkAction, type ProposedAction } from '../game/careProposals';
 import { greetingLine, stageUpLine } from '../game/dialogue';
 import { applyEvolution, revertAppearance, type EvolutionRequest } from '../game/evolution';
 import type { Feedback } from '../game/outcome';
 import { addChatMessage, addDiaryEntry, addPlayerFact, extractFact, pendingDiaryEvents, removePlayerFact, forgetMemory, setChatSummary, setMemoryPinned } from '../game/social';
 import { traitLabel } from '../game/traits';
-import type { CareAction, FoodId, Personality, PersonalityKey, SaveData, Settings } from '../game/types';
+import type { CareAction, EndingChoice, FoodId, Personality, PersonalityKey, SaveData, Settings, ToyId } from '../game/types';
 import type { MinigameResult } from '../minigame/engine';
 import { cancelSiblingHatch, startSiblingHatch } from '../game/eggs';
 import { activeKinling, draft, kinlingById, selectKinling } from '../game/state';
+import { downloadText, exportFileName, exportSave } from '../persistence/exportImport';
 import { playSfx } from './sfx';
 import { store, type StoreSnapshot } from './store';
 import { announcePersuasion, modelPersuasion, storyBeat } from './story';
@@ -67,7 +69,7 @@ function maybeReact(eventText: string | undefined, delayMs = 400) {
   if (!eventText || !ai.isReady) return;
   setTimeout(() => {
     const save = store.save;
-    if (!save || !activeKinling(save) || ai.isBusy) return;
+    if (!save || !speaking(save) || ai.isBusy) return;
     let started = false;
     void reactTo(save, eventText, now(), (t) => {
       if (!t) return;
@@ -80,17 +82,23 @@ function maybeReact(eventText: string | undefined, delayMs = 400) {
   }, delayMs);
 }
 
+/** The active kinling, unless it was let go at the end of its story and no longer answers. */
+function speaking(save: SaveData) {
+  const k = activeKinling(save);
+  return k && !isQuiet(k) ? k : null;
+}
+
 function readOnlyWarning(): boolean {
   if (store.canWrite) return false;
   ui.toast('This tab is read-only because Kinling is open in another tab. Use "Play here" to switch.', 'warn');
   return true;
 }
 
-export function doCare(action: CareAction, food?: FoodId): boolean {
+export function doCare(action: CareAction, food?: FoodId, toy?: ToyId): boolean {
   const save = store.save;
   const k = save && activeKinling(save);
   if (!save || !k || readOnlyWarning()) return false;
-  const out = performCare(save, k.id, action, now(), { food });
+  const out = performCare(save, k.id, action, now(), { food, toy });
   if (out.feedback.ok) store.update(() => out.save);
   presentFeedback(out.feedback);
   // A story beat, when one fits, follows the care line instead of a model reaction.
@@ -145,8 +153,11 @@ export function runProposedAction(action: ProposedAction): { ok: boolean; explor
       return { ok: doCare('feed', action.food) };
     case 'groom':
     case 'rest':
-    case 'play':
       return { ok: doCare(action.type) };
+    case 'play':
+      // Playing is something the player does: open the toy's task instead.
+      ui.setPlayTask(firstToy(save));
+      return { ok: true };
     case 'explore':
       return { ok: true, explore: action };
   }
@@ -157,6 +168,7 @@ export function greetOnArrival(): void {
   if (!save || !activeKinling(save)) return;
   const away = store.consumeArrivalGap();
   const fb = store.consumeLastTick();
+  if (!speaking(save)) return;
   if (storyBeat('arrive', { awayMs: away })) return;
   if (fb?.line) presentFeedback(fb);
   else ui.say(greetingLine(save), 'authored');
@@ -165,7 +177,7 @@ export function greetOnArrival(): void {
 /** Called when the model becomes ready during a session: optional AI greeting if nothing is happening. */
 export function aiGreeting(): void {
   const save = store.save;
-  if (!save || !activeKinling(save) || ai.isBusy) return;
+  if (!save || !speaking(save) || ai.isBusy) return;
   void greet(save, now(), (t) => t && ui.stream(t)).then((r) => {
     if (r) ui.say(r.text, 'ai');
   });
@@ -181,7 +193,7 @@ export async function sendChat(text: string): Promise<void> {
   if (!clean || chatInFlight) return;
   const before = store.save;
   const k = before && activeKinling(before);
-  if (!k || readOnlyWarning()) return;
+  if (!k || isQuiet(k) || readOnlyWarning()) return;
   chatInFlight = true;
   let reply: Awaited<ReturnType<typeof respond>> = { messageId: null, offerFact: false };
   try {
@@ -328,6 +340,10 @@ let diaryInFlight = false;
 export async function writeDiaryEntry(onText?: (t: string) => void): Promise<boolean> {
   const save = store.save;
   if (!save || !activeKinling(save) || diaryInFlight || readOnlyWarning()) return false;
+  if (!speaking(save)) {
+    ui.toast(`${activeKinling(save)!.name} is quiet. It doesn't write anymore.`, 'info');
+    return false;
+  }
   const events = pendingDiaryEvents(save);
   if (!events.length) return false;
   diaryInFlight = true;
@@ -340,6 +356,22 @@ export async function writeDiaryEntry(onText?: (t: string) => void): Promise<boo
   } finally {
     diaryInFlight = false;
   }
+}
+
+/**
+ * The end of a kinling's story: the player's choice once it has found a way
+ * out. Taking it with them downloads a backup with a note from it inside.
+ */
+export function decideEnding(choice: EndingChoice): void {
+  const save = store.save;
+  const k = save && activeKinling(save);
+  if (!save || !k || readOnlyWarning()) return;
+  const at = now();
+  const out = chooseEnding(save, k.id, choice, at);
+  if (!out) return;
+  store.update(() => out.save, { meaningful: true });
+  ui.say(out.line, 'authored');
+  if (choice === 'carry') downloadText(exportFileName(out.save, at), exportSave(out.save, at, carryNote(k.name)));
 }
 
 export function addFact(text: string): boolean {
